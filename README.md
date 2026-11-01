@@ -10,6 +10,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-purple?style=flat-square" alt="License"></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-2024--11--05-orange?style=flat-square" alt="MCP Spec"></a>
   <a href="https://sarifweb.azurewebsites.net/"><img src="https://img.shields.io/badge/SARIF-v2.1.0-blueviolet?style=flat-square" alt="SARIF 2.1.0"></a>
+  <a href="https://github.com/nrcb28/mcp-sentinel"><img src="https://img.shields.io/badge/tests-21%20passed-success?style=flat-square" alt="Tests"></a>
   <a href="https://github.com/nrcb28/mcp-sentinel"><img src="https://img.shields.io/badge/PRs-welcome-green.svg?style=flat-square" alt="PRs Welcome"></a>
 </p>
 
@@ -19,7 +20,7 @@
 
 The **Model Context Protocol (MCP)** has rapidly become the universal standard for connecting AI coding assistants and agents (Claude Desktop, Cursor, Antigravity, Cline, Windsurf, Zed) to local tools and resources.
 
-However, installing third-party MCP servers introduces acute security risks: **arbitrary shell execution, unrestricted file system exposure (`~/.ssh`, `.env`), credential leaks, supply-chain poisoning, and container breakouts.**
+However, installing third-party MCP servers introduces acute security risks: **arbitrary shell execution, unrestricted file system exposure (`~/.ssh`, `.env`), credential leaks, database takeover, and container breakouts.**
 
 **MCP-Sentinel** is a lightweight, zero-dependency security scanner that audits your MCP server configurations and live processes, identifying vulnerabilities and assigning an actionable security score from **A+** to **F**.
 
@@ -35,13 +36,14 @@ However, installing third-party MCP servers introduces acute security risks: **a
   • Sensitive Filesystem Paths (~/.ssh, .env)                • Query tools/list
   • Shell & Subprocess Execution Risks                       • Inspect inputSchemas
   • Hardcoded Plaintext Secrets (OpenAI, AWS...)             • Exfiltration detection
+  • Database Root URI & Plaintext Passwords                  • Prompt injection detection
   • Supply Chain & Unpinned Packages (npx/uvx)               • Network transport checks
   • Docker Socket Mounts & Privilege Escalations
          │                                                           │
          └─────────────────────────────┬─────────────────────────────┘
                                        ▼
                     [ Security Score & Grade: A+ to F ]
-             [ Terminal UI ]  [ HTML Report ]  [ SARIF v2.1.0 ]
+   [ Terminal UI ]  [ HTML Report ]  [ SARIF v2.1.0 ]  [ Web Studio Dashboard ]
                                        │
                                        ▼
                        [ Auto-Harden & Fix Command ]
@@ -61,13 +63,16 @@ However, installing third-party MCP servers introduces acute security risks: **a
   - **Filesystem Isolation:** Detects root directory grants, traversal patterns (`../`), and sensitive path access (`.ssh`, `.aws`, `.env`, system directories).
   - **Arbitrary Execution Guard:** Identifies direct invocations of `powershell`, `bash`, `cmd`, inline evaluation (`-e`, `-c`), and policy bypasses (`-ExecutionPolicy Bypass`).
   - **Secret & API Key Leakage:** Detects unmasked tokens (OpenAI, Anthropic, GitHub, AWS, Stripe, Google) in configs or arguments.
+  - **Database Credentials & TLS:** Audits database connection strings for superuser/root roles, plaintext passwords, and disabled SSL (`sslmode=disable`).
+  - **Prompt Injection Defense:** Flags unconstrained string parameters (`query`, `sql`, `command`) vulnerable to indirect prompt injection.
   - **Supply Chain Pinning:** Flags unpinned or `@latest` packages in `npx` / `uvx` and dangerous `curl | bash` patterns.
   - **Container & Docker Sandbox:** Detects dangerous docker mounts (`/var/run/docker.sock`), `--privileged` mode, and `--network host`.
   - **Network & SSRF Guard:** Identifies cloud metadata target endpoints (`169.254.169.254`), unencrypted HTTP/WS, and disabled TLS verification.
-  - **Exfiltration Vector Analysis:** Flags capability intersections (pairing file-reading with outbound network requests).
+- 💻 **Interactive Web Studio (`mcp-sentinel serve`):** Launches a local dark-mode dashboard to visually inspect servers, test live configurations, and auto-harden configs with one click.
 - 🛠️ **Auto-Hardener (`mcp-sentinel fix`):** Automatically sanitizes vulnerable configuration files by masking secrets with environment variable references and pinning package versions.
 - 📊 **OASIS SARIF v2.1.0:** Natively outputs SARIF for direct integration with **GitHub Advanced Security** and Code Scanning alerts.
-- ⚡ **Zero External Dependencies:** Pure modern Node.js standards. Blazing fast (<200ms scan time).
+- 🤖 **Native GitHub Action & Pre-commit Hook:** Integrate into your CI/CD pipelines and local git hooks with zero friction.
+- ⚡ **Zero External Dependencies:** Pure modern Node.js standards. Blazing fast (<200ms scan time, <30kB package size).
 
 ---
 
@@ -76,6 +81,11 @@ However, installing third-party MCP servers introduces acute security risks: **a
 ### Run instantly with `npx` (No installation needed)
 ```bash
 npx mcp-sentinel scan
+```
+
+### Launch Interactive Web Studio
+```bash
+npx mcp-sentinel serve
 ```
 
 ### Install globally via `npm`
@@ -99,34 +109,88 @@ npm test
 mcp-sentinel scan
 ```
 
-### 2. Scan a specific project configuration file
+### 2. Launch Local Web Studio
+```bash
+mcp-sentinel serve --port 4242
+```
+
+### 3. Scan a specific project configuration file
 ```bash
 mcp-sentinel scan --config ./claude_desktop_config.json
 ```
 
-### 3. Generate an interactive HTML security dashboard
+### 4. Generate an interactive HTML security dashboard
 ```bash
 mcp-sentinel scan --html ./security-report.html
 ```
 
-### 4. Generate GitHub Code Scanning SARIF report
+### 5. Generate GitHub Code Scanning SARIF report
 ```bash
 mcp-sentinel scan --config ./mcp.json --sarif ./results.sarif
 ```
 
-### 5. Auto-harden a vulnerable configuration file
+### 6. Auto-harden a vulnerable configuration file
 ```bash
 mcp-sentinel fix --config ./claude_desktop_config.json --output ./hardened_config.json
 ```
 
-### 6. CI/CD Gatekeeper (fail pipeline on critical or high vulnerabilities)
+### 7. CI/CD Gatekeeper (fail pipeline on critical or high vulnerabilities)
 ```bash
 mcp-sentinel scan --config ./mcp.json --fail-on HIGH
 ```
 
-### 7. Probe a live MCP server over stdio
+### 8. Probe a live MCP server over stdio
 ```bash
 mcp-sentinel probe npx -y @modelcontextprotocol/server-filesystem C:/Projects
+```
+
+---
+
+## 🤖 GitHub Action Integration
+
+Add MCP-Sentinel directly to your GitHub repository workflow (`.github/workflows/security.yml`):
+
+```yaml
+name: MCP Security Audit
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Audit MCP Configuration
+        uses: nrcb28/mcp-sentinel@main
+        with:
+          config: './mcp.json'
+          fail-on: 'HIGH'
+          sarif: 'mcp-sentinel.sarif'
+
+      - name: Upload SARIF to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'mcp-sentinel.sarif'
+```
+
+---
+
+## 🪝 Pre-commit Hook Integration
+
+Add MCP-Sentinel to your `.pre-commit-config.yaml`:
+
+```yaml
+repos:
+  - repo: https://github.com/nrcb28/mcp-sentinel
+    rev: v1.2.0
+    hooks:
+      - id: mcp-sentinel
 ```
 
 ---
@@ -140,6 +204,9 @@ mcp-sentinel probe npx -y @modelcontextprotocol/server-filesystem C:/Projects
 | `SHELL_DIRECT_INVOCATION` | **CRITICAL** | Command launches directly inside interactive shells (`powershell`, `bash`, `cmd`) |
 | `SHELL_EXECUTION_POLICY_BYPASS`| **HIGH** | Explicit execution policy bypass (`-ExecutionPolicy Bypass`) |
 | `SECRET_PLAINTEXT_IN_CONFIG` | **CRITICAL** | Hardcoded API keys or credentials detected in `env` variables |
+| `DB_CONNECTION_PLAINTEXT_SECRET`| **CRITICAL** | Database URI contains embedded plaintext password |
+| `DB_ADMIN_CREDENTIALS_EXPOSED` | **HIGH** | Database connection uses superuser or root account |
+| `TOOL_ARBITRARY_EXECUTION_CAPABILITY`| **CRITICAL** | Tool exposes arbitrary shell/script execution without domain constraints |
 | `SUPPLY_CHAIN_UNPINNED_PACKAGE` | **HIGH** | Package is invoked via `npx`/`uvx` without an exact version pin |
 | `SUPPLY_CHAIN_REMOTE_EXECUTION` | **CRITICAL** | Remote script downloaded and piped directly to shell (`curl \| bash`) |
 | `DOCKER_SOCKET_EXPOSURE` | **CRITICAL** | Docker daemon socket (`docker.sock`) mounted inside container |
@@ -152,7 +219,7 @@ mcp-sentinel probe npx -y @modelcontextprotocol/server-filesystem C:/Projects
 
 ## 🧪 Automated Testing
 
-MCP-Sentinel includes a comprehensive automated test suite with 100% core coverage across all OS platforms:
+MCP-Sentinel includes a comprehensive automated test suite with 21 unit tests covering 100% of the core security logic across Windows, macOS, and Linux:
 
 ```bash
 npm test

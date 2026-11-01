@@ -1,0 +1,7 @@
+test/
+.github/
+.pre-commit-hooks.yaml
+report.html
+report.json
+results.sarif
+*.log

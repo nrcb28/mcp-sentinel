@@ -5,6 +5,8 @@ import { analyzeExfiltrationRisk } from './rules/exfiltration-rule.js';
 import { analyzeSupplyChainRisk } from './rules/supply-chain-rule.js';
 import { analyzeDockerSandboxRisk } from './rules/docker-sandbox-rule.js';
 import { analyzeNetworkTransportRisk } from './rules/network-transport-rule.js';
+import { analyzeDatabaseSafetyRisk } from './rules/database-safety-rule.js';
+import { analyzePromptInjectionRisk } from './rules/prompt-injection-rule.js';
 
 export function calculateGrade(score) {
   if (score >= 95) return 'A+';
@@ -27,6 +29,8 @@ export function auditServer(serverName, serverConfig, liveTools = []) {
     ...analyzeSupplyChainRisk(serverName, serverConfig),
     ...analyzeDockerSandboxRisk(serverName, serverConfig),
     ...analyzeNetworkTransportRisk(serverName, serverConfig),
+    ...analyzeDatabaseSafetyRisk(serverName, serverConfig),
+    ...analyzePromptInjectionRisk(serverName, serverConfig, liveTools),
   ];
 
   let deductions = 0;

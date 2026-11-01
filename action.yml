@@ -1,0 +1,50 @@
+name: 'MCP-Sentinel Security Audit'
+description: 'Audits Model Context Protocol (MCP) server configurations for security risks, secret leaks, and sandbox breakout vulnerabilities.'
+author: 'Nicolás Riquelme Lozano'
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  config:
+    description: 'Path to MCP configuration file (defaults to auto-discovering all clients)'
+    required: false
+    default: ''
+  fail-on:
+    description: 'Exit with error if issues at or above this severity are detected [LOW, MEDIUM, HIGH, CRITICAL]'
+    required: false
+    default: 'HIGH'
+  sarif:
+    description: 'Output path for OASIS SARIF v2.1.0 report'
+    required: false
+    default: 'mcp-sentinel.sarif'
+  html:
+    description: 'Output path for visual HTML dashboard report'
+    required: false
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Run MCP-Sentinel
+      shell: bash
+      run: |
+        ARGS="scan"
+        if [ -n "${{ inputs.config }}" ]; then
+          ARGS="$ARGS --config ${{ inputs.config }}"
+        fi
+        if [ -n "${{ inputs.fail-on }}" ]; then
+          ARGS="$ARGS --fail-on ${{ inputs.fail-on }}"
+        fi
+        if [ -n "${{ inputs.sarif }}" ]; then
+          ARGS="$ARGS --sarif ${{ inputs.sarif }}"
+        fi
+        if [ -n "${{ inputs.html }}" ]; then
+          ARGS="$ARGS --html ${{ inputs.html }}"
+        fi
+        node "${{ github.action_path }}/bin/mcp-sentinel.js" $ARGS

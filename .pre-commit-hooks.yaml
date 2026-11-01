@@ -1,0 +1,7 @@
+- id: mcp-sentinel
+  name: MCP Sentinel Security Auditor
+  description: Audits Model Context Protocol (MCP) server configuration files for security vulnerabilities
+  entry: npx -y mcp-sentinel scan --fail-on HIGH
+  language: system
+  files: (mcp\.json|claude_desktop_config\.json|cline_mcp_settings\.json)$
+  pass_filenames: false

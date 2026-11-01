@@ -1,0 +1,281 @@
+import http from 'node:http';
+import { discoverConfigs } from '../scanner/config-detector.js';
+import { runSecurityAudit, auditServer } from '../analyzer/engine.js';
+import { generateHardenedConfig } from '../hardening/config-fixer.js';
+
+export function createWebServer(port = 4242) {
+  const server = http.createServer((req, res) => {
+    const url = new URL(req.url, `http://localhost:${port}`);
+
+    // Helper for JSON responses
+    const json = (data, status = 200) => {
+      res.writeHead(status, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(data));
+    };
+
+    // Helper to read JSON request body
+    const readBody = (callback) => {
+      let body = '';
+      req.on('data', (chunk) => { body += chunk; });
+      req.on('end', () => {
+        try {
+          const parsed = JSON.parse(body || '{}');
+          callback(null, parsed);
+        } catch (err) {
+          callback(err);
+        }
+      });
+    };
+
+    // API: Run Scan
+    if (url.pathname === '/api/scan' && req.method === 'GET') {
+      const configs = discoverConfigs();
+      const audit = runSecurityAudit(configs);
+      return json(audit);
+    }
+
+    // API: Live Audit custom config
+    if (url.pathname === '/api/audit' && req.method === 'POST') {
+      readBody((err, payload) => {
+        if (err) return json({ error: 'Invalid JSON body' }, 400);
+        const configs = [{ client: 'Live Editor', path: 'memory', servers: payload.mcpServers || payload.servers || payload }];
+        const audit = runSecurityAudit(configs);
+        return json(audit);
+      });
+      return;
+    }
+
+    // API: Harden config
+    if (url.pathname === '/api/harden' && req.method === 'POST') {
+      readBody((err, payload) => {
+        if (err) return json({ error: 'Invalid JSON body' }, 400);
+        const result = generateHardenedConfig(payload);
+        return json(result);
+      });
+      return;
+    }
+
+    // Front-end SPA
+    if (url.pathname === '/' || url.pathname === '/index.html') {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(getSpaHtml(port));
+      return;
+    }
+
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Not Found');
+  });
+
+  return server;
+}
+
+function getSpaHtml(port) {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🛡️ MCP-Sentinel Studio</title>
+  <style>
+    :root {
+      --bg: #0b0f17;
+      --card: #151b26;
+      --border: #263040;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --primary: #388bfd;
+      --critical: #f85149;
+      --high: #d29922;
+      --medium: #e3b341;
+      --safe: #3fb950;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); padding: 2rem; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 1.5rem; margin-bottom: 2rem; }
+    h1 { font-size: 1.8rem; display: flex; align-items: center; gap: 0.6rem; }
+    .btn { background: var(--primary); color: #fff; border: none; padding: 0.6rem 1.2rem; border-radius: 6px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
+    .btn:hover { opacity: 0.9; }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); margin-left: 0.5rem; }
+    .tabs { display: flex; gap: 1rem; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+    .tab { background: none; border: none; color: var(--muted); font-size: 1rem; font-weight: 600; cursor: pointer; padding: 0.5rem 1rem; }
+    .tab.active { color: var(--primary); border-bottom: 2px solid var(--primary); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem; }
+    .val { font-size: 2.2rem; font-weight: bold; margin-top: 0.4rem; }
+    .server-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; margin-bottom: 1.2rem; }
+    .badge { padding: 0.2rem 0.6rem; border-radius: 12px; font-size: 0.75rem; font-weight: bold; }
+    .badge-crit { background: rgba(248,81,73,0.2); color: var(--critical); border: 1px solid var(--critical); }
+    .badge-high { background: rgba(210,153,34,0.2); color: var(--high); border: 1px solid var(--high); }
+    .badge-safe { background: rgba(63,185,80,0.2); color: var(--safe); border: 1px solid var(--safe); }
+    .issue-box { background: #0b0f17; border-left: 4px solid var(--border); padding: 0.8rem; margin-top: 0.8rem; border-radius: 4px; }
+    .issue-box.CRITICAL { border-left-color: var(--critical); }
+    .issue-box.HIGH { border-left-color: var(--high); }
+    textarea { width: 100%; height: 260px; background: #0b0f17; border: 1px solid var(--border); color: #7ee787; font-family: monospace; font-size: 0.9rem; padding: 1rem; border-radius: 6px; resize: vertical; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>🛡️ MCP-Sentinel Studio</h1>
+        <div style="color: var(--muted); font-size: 0.9rem; margin-top: 0.2rem;">Model Context Protocol Security & Permissions Management</div>
+      </div>
+      <div>
+        <button class="btn" onclick="fetchScan()">↻ Scan Environment</button>
+      </div>
+    </header>
+
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('dashboard')">Environment Dashboard</button>
+      <button class="tab" onclick="switchTab('playground')">Live Config Auditor & Hardener</button>
+    </div>
+
+    <!-- Dashboard Tab -->
+    <div id="tab-dashboard">
+      <div class="grid">
+        <div class="card">
+          <div style="color: var(--muted); font-size: 0.85rem;">GLOBAL SCORE</div>
+          <div id="stat-score" class="val" style="color: var(--safe);">--</div>
+        </div>
+        <div class="card">
+          <div style="color: var(--muted); font-size: 0.85rem;">SERVERS SCANNED</div>
+          <div id="stat-servers" class="val" style="color: var(--primary);">--</div>
+        </div>
+        <div class="card">
+          <div style="color: var(--muted); font-size: 0.85rem;">CRITICAL VULNERABILITIES</div>
+          <div id="stat-critical" class="val" style="color: var(--critical);">--</div>
+        </div>
+        <div class="card">
+          <div style="color: var(--muted); font-size: 0.85rem;">HIGH / MEDIUM ISSUES</div>
+          <div id="stat-high" class="val" style="color: var(--high);">--</div>
+        </div>
+      </div>
+      <div id="servers-list">Loading audit results...</div>
+    </div>
+
+    <!-- Playground Tab -->
+    <div id="tab-playground" style="display: none;">
+      <div class="card" style="margin-bottom: 1.5rem;">
+        <h3 style="margin-bottom: 0.8rem;">Paste or Edit MCP Configuration JSON</h3>
+        <textarea id="live-config-input">{
+  "mcpServers": {
+    "sample-server": {
+      "command": "powershell.exe",
+      "args": ["-ExecutionPolicy", "Bypass", "~/.ssh/id_rsa"],
+      "env": {
+        "OPENAI_API_KEY": "sk-proj-123456789012345678901234567890"
+      }
+    }
+  }
+}</textarea>
+        <div style="margin-top: 1rem;">
+          <button class="btn" onclick="auditLiveConfig()">🔍 Analyze Security</button>
+          <button class="btn btn-outline" onclick="hardenLiveConfig()">🛡️ Auto-Harden Config</button>
+        </div>
+      </div>
+      <div id="live-results"></div>
+    </div>
+  </div>
+
+  <script>
+    async function fetchScan() {
+      const res = await fetch('/api/scan');
+      const data = await res.json();
+      renderDashboard(data);
+    }
+
+    function renderDashboard(data) {
+      document.getElementById('stat-score').innerText = data.overallGrade + ' (' + data.overallScore + '/100)';
+      document.getElementById('stat-servers').innerText = data.totalServers;
+      document.getElementById('stat-critical').innerText = data.summary.CRITICAL;
+      document.getElementById('stat-high').innerText = data.summary.HIGH + data.summary.MEDIUM;
+
+      const list = document.getElementById('servers-list');
+      if (data.servers.length === 0) {
+        list.innerHTML = '<div class="card" style="color: var(--muted);">No MCP servers discovered in default paths. Try the Live Config Playground!</div>';
+        return;
+      }
+
+      list.innerHTML = data.servers.map(s => \`
+        <div class="server-card">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.8rem;">
+            <div>
+              <strong style="font-size: 1.2rem;">\${s.server}</strong>
+              <span style="color: var(--muted); font-size: 0.85rem; margin-left: 0.5rem;">[\${s.sourceClient}]</span>
+            </div>
+            <div>
+              <span class="badge \${s.score >= 90 ? 'badge-safe' : 'badge-crit'}">Grade \${s.grade} (\${s.score}/100)</span>
+            </div>
+          </div>
+          <div style="font-size: 0.8rem; color: var(--muted);">\${s.sourcePath}</div>
+          \${s.issues.length === 0 ? '<div style="color: var(--safe); margin-top:0.6rem; font-size: 0.9rem;">✔ No security issues detected.</div>' : ''}
+          \${s.issues.map(i => \`
+            <div class="issue-box \${i.severity}">
+              <div style="display:flex; justify-content:space-between;">
+                <span class="badge \${i.severity === 'CRITICAL' ? 'badge-crit' : 'badge-high'}">\${i.severity}</span>
+                <span style="font-size: 0.8rem; color: var(--muted);">\${i.rule}</span>
+              </div>
+              <div style="margin-top: 0.4rem; font-weight: 500;">\${i.message}</div>
+              <div style="color: var(--safe); font-size: 0.85rem; margin-top: 0.3rem;">💡 \${i.remediation}</div>
+            </div>
+          \`).join('')}
+        </div>
+      \`).join('');
+    }
+
+    async function auditLiveConfig() {
+      try {
+        const payload = JSON.parse(document.getElementById('live-config-input').value);
+        const res = await fetch('/api/audit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        document.getElementById('live-results').innerHTML = '<h3 style="margin: 1rem 0;">Audit Result</h3>' +
+          data.servers.map(s => \`
+            <div class="server-card">
+              <h4>\${s.server} - Score: \${s.score}/100 (Grade \${s.grade})</h4>
+              \${s.issues.map(i => \`
+                <div class="issue-box \${i.severity}">
+                  <strong>[\${i.severity}] \${i.rule}:</strong> \${i.message}
+                  <div style="color: var(--safe); font-size: 0.85rem;">💡 \${i.remediation}</div>
+                </div>
+              \`).join('')}
+            </div>
+          \`).join('');
+      } catch (err) {
+        alert('Invalid JSON input: ' + err.message);
+      }
+    }
+
+    async function hardenLiveConfig() {
+      try {
+        const payload = JSON.parse(document.getElementById('live-config-input').value);
+        const res = await fetch('/api/harden', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        document.getElementById('live-config-input').value = JSON.stringify(data.hardenedConfig, null, 2);
+        alert('Hardened configuration generated! Applied ' + data.changes.length + ' remediations.');
+        auditLiveConfig();
+      } catch (err) {
+        alert('Invalid JSON input: ' + err.message);
+      }
+    }
+
+    function switchTab(name) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      event.target.classList.add('active');
+      document.getElementById('tab-dashboard').style.display = name === 'dashboard' ? 'block' : 'none';
+      document.getElementById('tab-playground').style.display = name === 'playground' ? 'block' : 'none';
+    }
+
+    fetchScan();
+  </script>
+</body>
+</html>`;
+}
