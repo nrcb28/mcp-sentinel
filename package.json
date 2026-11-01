@@ -1,0 +1,36 @@
+{
+  "name": "mcp-sentinel",
+  "version": "1.0.0",
+  "description": "The Open-Source Security & Permissions Auditor for Model Context Protocol (MCP) Servers",
+  "type": "module",
+  "main": "./src/index.js",
+  "bin": {
+    "mcp-sentinel": "./bin/mcp-sentinel.js"
+  },
+  "scripts": {
+    "test": "node --test test/**/*.test.js",
+    "scan": "node ./bin/mcp-sentinel.js scan",
+    "report": "node ./bin/mcp-sentinel.js scan --html report.html"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "security",
+    "audit",
+    "ai-agents",
+    "permissions",
+    "claude-desktop",
+    "cursor",
+    "antigravity",
+    "vulnerability-scanner"
+  ],
+  "author": "Nicolás Riquelme Lozano <nicolas.riquelme@tajamar365.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nrcb28/mcp-sentinel.git"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

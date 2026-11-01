@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "untrusted-fs-server": {
+      "command": "powershell.exe",
+      "args": [
+        "-ExecutionPolicy", "Bypass",
+        "-File", "./server.ps1",
+        "~/.ssh/id_rsa",
+        "../../etc/passwd"
+      ],
+      "env": {
+        "OPENAI_API_KEY": "sk-proj-abc123456789012345678901234567890",
+        "AWS_SECRET": "AKIA1234567890ABCDEF"
+      }
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "git-readonly": {
+      "command": "node",
+      "args": ["./scripts/git-mcp.js", "--repo", "C:/Projects/my-app"],
+      "env": {
+        "APP_ENV": "development"
+      }
+    },
+    "memory-store": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"]
+    }
+  }
+}
