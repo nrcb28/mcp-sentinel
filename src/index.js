@@ -4,3 +4,5 @@ export { auditServer, runSecurityAudit, calculateGrade } from './analyzer/engine
 export { printTerminalReport } from './reporter/terminal-reporter.js';
 export { generateHtmlReport } from './reporter/html-reporter.js';
 export { outputJsonReport } from './reporter/json-reporter.js';
+export { generateSarifReport } from './reporter/sarif-reporter.js';
+export { generateHardenedConfig, saveHardenedConfigFile } from './hardening/config-fixer.js';

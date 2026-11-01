@@ -2,6 +2,9 @@ import { analyzeFilesystemRisk } from './rules/filesystem-rule.js';
 import { analyzeShellExecRisk } from './rules/shell-exec-rule.js';
 import { analyzeSecretsLeakRisk } from './rules/secrets-leak-rule.js';
 import { analyzeExfiltrationRisk } from './rules/exfiltration-rule.js';
+import { analyzeSupplyChainRisk } from './rules/supply-chain-rule.js';
+import { analyzeDockerSandboxRisk } from './rules/docker-sandbox-rule.js';
+import { analyzeNetworkTransportRisk } from './rules/network-transport-rule.js';
 
 export function calculateGrade(score) {
   if (score >= 95) return 'A+';
@@ -13,7 +16,7 @@ export function calculateGrade(score) {
 }
 
 /**
- * Evaluates a single MCP server configuration.
+ * Evaluates a single MCP server configuration across all security domains.
  */
 export function auditServer(serverName, serverConfig, liveTools = []) {
   const issues = [
@@ -21,6 +24,9 @@ export function auditServer(serverName, serverConfig, liveTools = []) {
     ...analyzeShellExecRisk(serverName, serverConfig),
     ...analyzeSecretsLeakRisk(serverName, serverConfig),
     ...analyzeExfiltrationRisk(serverName, serverConfig, liveTools),
+    ...analyzeSupplyChainRisk(serverName, serverConfig),
+    ...analyzeDockerSandboxRisk(serverName, serverConfig),
+    ...analyzeNetworkTransportRisk(serverName, serverConfig),
   ];
 
   let deductions = 0;

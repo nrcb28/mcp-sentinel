@@ -25,5 +25,5 @@ jobs:
     - name: Run Test Suite
       run: npm test
 
-    - name: Verify CLI Scan
-      run: node ./bin/mcp-sentinel.js scan --config ./test/fixtures/safe-config.json --fail-on CRITICAL
+    - name: Verify CLI Scan & SARIF Export
+      run: node ./bin/mcp-sentinel.js scan --config ./test/fixtures/safe-config.json --sarif ./results.sarif --fail-on CRITICAL
