@@ -16,3 +16,7 @@ personal data.
 `mcp-sentinel serve` is a local, unauthenticated development interface. It is
 bound to `127.0.0.1` by the CLI and must not be exposed through a public
 interface without an authenticated and encrypted reverse proxy.
+
+On WSL, configuration discovery is scoped to the inferred Windows user by
+default. The `MCP_SENTINEL_SCAN_ALL_USERS=1` override should be used only by
+an operator authorized to inspect all local Windows profiles.

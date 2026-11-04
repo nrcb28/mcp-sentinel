@@ -52,6 +52,22 @@ test('secrets-leak-rule: flags plaintext OpenAI and AWS API keys', () => {
   assert.ok(issues.every((i) => i.severity === 'CRITICAL'));
 });
 
+test('secrets-leak-rule: detects bearer tokens, JWTs, and inline credential arguments', () => {
+  const issues = analyzeSecretsLeakRisk('token-server', {
+    command: 'node',
+    args: [
+      '--authorization=Bearer abcdefghijklmnopqrstuvwxyz123456',
+      'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signaturepayload123',
+      '--password=plaintext-password',
+    ],
+  });
+
+  assert.ok(issues.some((i) => i.message.includes('Bearer Access Token')));
+  assert.ok(issues.some((i) => i.message.includes('JSON Web Token')));
+  assert.ok(issues.some((i) => i.message.includes('Inline Credential Assignment')));
+  assert.ok(issues.every((i) => !i.target.includes('abcdefghijklmnopqrstuvwxyz123456')));
+});
+
 test('exfiltration-rule: identifies cross-capability read and network tools', () => {
   const liveTools = [
     { name: 'read_file', description: 'Reads local file' },

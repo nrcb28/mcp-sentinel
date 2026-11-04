@@ -10,7 +10,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-purple?style=flat-square" alt="License"></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-2024--11--05-orange?style=flat-square" alt="MCP Spec"></a>
   <a href="https://sarifweb.azurewebsites.net/"><img src="https://img.shields.io/badge/SARIF-v2.1.0-blueviolet?style=flat-square" alt="SARIF 2.1.0"></a>
-  <a href="https://github.com/nrcb28/mcp-sentinel"><img src="https://img.shields.io/badge/tests-23%20passed-success?style=flat-square" alt="Tests"></a>
+  <a href="https://github.com/nrcb28/mcp-sentinel"><img src="https://img.shields.io/badge/tests-25%20passed-success?style=flat-square" alt="Tests"></a>
   <a href="https://github.com/nrcb28/mcp-sentinel"><img src="https://img.shields.io/badge/PRs-welcome-green.svg?style=flat-square" alt="PRs Welcome"></a>
 </p>
 
@@ -62,7 +62,7 @@ However, installing third-party MCP servers introduces acute security risks: **a
 - 🛡️ **Comprehensive Rule Engine:**
   - **Filesystem Isolation:** Detects root directory grants, traversal patterns (`../`), and sensitive path access (`.ssh`, `.aws`, `.env`, system directories).
   - **Arbitrary Execution Guard:** Identifies direct invocations of `powershell`, `bash`, `cmd`, inline evaluation (`-e`, `-c`), and policy bypasses (`-ExecutionPolicy Bypass`).
-  - **Secret & API Key Leakage:** Detects unmasked tokens (OpenAI, Anthropic, GitHub, AWS, Stripe, Google) in configs or arguments.
+  - **Secret & API Key Leakage:** Detects unmasked tokens (OpenAI, Anthropic, GitHub, AWS, Stripe, Google), Bearer tokens, JWTs, and inline credentials in configs or arguments.
   - **Database Credentials & TLS:** Audits database connection strings for superuser/root roles, plaintext passwords, and disabled SSL (`sslmode=disable`).
   - **Prompt Injection Defense:** Flags unconstrained string parameters (`query`, `sql`, `command`) vulnerable to indirect prompt injection.
   - **Supply Chain Pinning:** Flags unpinned or `@latest` packages in `npx` / `uvx` and dangerous `curl | bash` patterns. The hardener never invents a package version; it leaves the package unchanged and requests a verified exact pin.
@@ -70,6 +70,8 @@ However, installing third-party MCP servers introduces acute security risks: **a
   - **Network & SSRF Guard:** Identifies cloud metadata target endpoints (`169.254.169.254`), unencrypted HTTP/WS, and disabled TLS verification.
 - 💻 **Interactive Web Studio (`mcp-sentinel serve`):** Launches a local dark-mode dashboard to visually inspect servers, test live configurations, and auto-harden configs with one click.
 - 🛠️ **Auto-Hardener (`mcp-sentinel fix`):** Automatically sanitizes vulnerable configuration files by masking secrets with environment variable references and reporting packages that still need a verified exact pin.
+- 🔎 **Live Probe Audit:** `probe` now analyzes discovered MCP tools for exfiltration, arbitrary execution, and prompt-injection surfaces instead of only listing them.
+- 🔐 **Safe Artifacts:** JSON, SARIF, HTML, and hardened configurations reject symlink output targets, enforce size limits, and use private file permissions where supported.
 - 📊 **OASIS SARIF v2.1.0:** Natively outputs SARIF for direct integration with **GitHub Advanced Security** and Code Scanning alerts.
 - 🤖 **Native GitHub Action & Pre-commit Hook:** Integrate into your CI/CD pipelines and local git hooks with zero friction.
 - ⚡ **Zero External Dependencies:** Pure modern Node.js standards. Blazing fast (<200ms scan time, <30kB package size).
@@ -152,6 +154,9 @@ Probe children receive a minimal inherited environment by default. The full
 parent environment is never forwarded automatically; pass only required
 variables explicitly through the programmatic API.
 
+On WSL, discovery scans the inferred Windows user only. Set
+`MCP_SENTINEL_SCAN_ALL_USERS=1` only for an authorized multi-user audit.
+
 ---
 
 ## 🤖 GitHub Action Integration
@@ -196,7 +201,7 @@ Add MCP-Sentinel to your `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/nrcb28/mcp-sentinel
-    rev: v1.3.0
+    rev: v1.4.0
     hooks:
       - id: mcp-sentinel
 ```
@@ -227,7 +232,7 @@ repos:
 
 ## 🧪 Automated Testing
 
-MCP-Sentinel includes a comprehensive automated test suite with 23 unit tests covering the core security logic across Windows, macOS, and Linux:
+MCP-Sentinel includes a comprehensive automated test suite with 25 unit tests covering the core security logic across Windows, macOS, and Linux:
 
 ```bash
 npm test

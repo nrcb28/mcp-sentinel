@@ -6,15 +6,19 @@ const SECRET_SIGNATURES = [
   /xox[baprs]-[0-9a-zA-Z]{10,48}/g,
   /AIza[0-9A-Za-z_-]{35}/g,
   /(?:sk|rk)_(?:live|test)_[0-9a-zA-Z]{24,99}/g,
+  /\bBearer\s+[A-Za-z0-9._~+/=-]{20,}/gi,
+  /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g,
 ];
 
 const PRIVATE_KEY_PATTERN = /-----BEGIN (?:RSA|EC|DSA|OPENSSH) PRIVATE KEY-----[\s\S]*?-----END (?:RSA|EC|DSA|OPENSSH) PRIVATE KEY-----/g;
 const URI_PASSWORD_PATTERN = /(\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis):\/\/[^\s/@]+:)[^\s/@]+(@)/gi;
+const INLINE_CREDENTIAL_PATTERN = /(\b(?:password|passwd|secret|token|api[_-]?key)\s*[=:]\s*)[^\s,;&]+/gi;
 const SENSITIVE_KEY_PATTERN = /(?:password|passwd|secret|token|api[_-]?key|private[_-]?key|credential|auth)/i;
 
 function redactString(value) {
   let redacted = value.replace(PRIVATE_KEY_PATTERN, '[REDACTED_PRIVATE_KEY]');
   redacted = redacted.replace(URI_PASSWORD_PATTERN, '$1[REDACTED]$2');
+  redacted = redacted.replace(INLINE_CREDENTIAL_PATTERN, '$1[REDACTED]');
   for (const signature of SECRET_SIGNATURES) {
     redacted = redacted.replace(signature, '[REDACTED_SECRET]');
   }

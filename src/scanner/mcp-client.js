@@ -117,6 +117,8 @@ export function probeMcpServer(
     let buffer = '';
     let outputBytes = 0;
     let serverInfo = null;
+    let initializeResponseSeen = false;
+    let toolsRequestSent = false;
     let timer;
     let killTimer;
 
@@ -124,6 +126,15 @@ export function probeMcpServer(
       try {
         if (!child.killed) child.kill('SIGTERM');
       } catch (_) {}
+      if (process.platform === 'win32' && child.pid) {
+        try {
+          const killer = spawn('taskkill.exe', ['/pid', String(child.pid), '/t', '/f'], {
+            windowsHide: true,
+            stdio: 'ignore',
+          });
+          killer.on('error', () => {});
+        } catch (_) {}
+      }
       killTimer = setTimeout(() => {
         try {
           if (!child.killed) child.kill('SIGKILL');
@@ -197,12 +208,26 @@ export function probeMcpServer(
           continue;
         }
 
-        if (msg?.id === 1 && msg.result) {
+        if (msg?.jsonrpc !== '2.0') continue;
+
+        if (msg.id === 1 && msg.error) {
+          finish(makeErrorResult(`MCP initialize failed: ${msg.error.message || 'unknown error'}`));
+          return;
+        }
+
+        if (msg?.id === 1 && msg.result && !initializeResponseSeen) {
+          initializeResponseSeen = true;
           serverInfo = msg.result.serverInfo || msg.result;
           writeMessage({ jsonrpc: '2.0', method: 'notifications/initialized' });
-          writeMessage({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
-        } else if (msg?.id === 2) {
-          const retrievedTools = Array.isArray(msg.result?.tools) ? msg.result.tools : [];
+          toolsRequestSent = writeMessage({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
+        } else if (msg?.id === 2 && toolsRequestSent) {
+          if (msg.error) {
+            finish(makeErrorResult(`MCP tools/list failed: ${msg.error.message || 'unknown error'}`));
+            return;
+          }
+          const retrievedTools = Array.isArray(msg.result?.tools)
+            ? msg.result.tools.filter((tool) => tool && typeof tool === 'object' && !Array.isArray(tool))
+            : [];
           if (retrievedTools.length > maxTools) {
             finish(makeErrorResult(`MCP server returned more than the ${maxTools} tool safety limit`));
             return;
@@ -225,7 +250,7 @@ export function probeMcpServer(
       params: {
         protocolVersion: '2024-11-05',
         capabilities: {},
-        clientInfo: { name: 'mcp-sentinel', version: '1.3.0' },
+        clientInfo: { name: 'mcp-sentinel', version: '1.4.0' },
       },
     });
   });

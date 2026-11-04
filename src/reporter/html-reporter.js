@@ -1,4 +1,4 @@
-import fs from 'node:fs';
+import { writeTextFileSecure } from '../security/safe-write.js';
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (char) => ({
@@ -195,5 +195,5 @@ export function generateHtmlReport(auditResult, outputPath) {
 </body>
 </html>`;
 
-  fs.writeFileSync(outputPath, html, 'utf8');
+  writeTextFileSecure(outputPath, html);
 }

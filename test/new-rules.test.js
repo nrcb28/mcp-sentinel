@@ -1,10 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { analyzeSupplyChainRisk } from '../src/analyzer/rules/supply-chain-rule.js';
 import { analyzeDockerSandboxRisk } from '../src/analyzer/rules/docker-sandbox-rule.js';
 import { analyzeNetworkTransportRisk } from '../src/analyzer/rules/network-transport-rule.js';
 import { generateHardenedConfig } from '../src/hardening/config-fixer.js';
 import { generateSarifReport } from '../src/reporter/sarif-reporter.js';
+import { generateHtmlReport } from '../src/reporter/html-reporter.js';
+import { writeTextFileSecure } from '../src/security/safe-write.js';
 
 test('supply-chain-rule: detects unpinned npx package and pipe-to-shell patterns', () => {
   const unpinnedConfig = {
@@ -107,4 +112,41 @@ test('sarif-reporter: generates valid OASIS SARIF v2.1.0 structure', () => {
   assert.equal(parsed.runs[0].results.length, 1);
   assert.equal(parsed.runs[0].results[0].ruleId, 'FS_SENSITIVE_PATH_EXPOSURE');
   assert.equal(parsed.runs[0].results[0].level, 'error');
+});
+
+test('reporters: escape untrusted findings and reject oversized generated files', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mcp-sentinel-'));
+  try {
+    const reportPath = path.join(tempDir, 'report.html');
+    generateHtmlReport({
+      timestamp: new Date().toISOString(),
+      overallGrade: 'A+',
+      overallScore: 100,
+      totalServers: 1,
+      summary: { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 },
+      servers: [{
+        server: '<script>alert(1)</script>',
+        sourceClient: 'test',
+        sourcePath: 'memory',
+        score: 100,
+        grade: 'A+',
+        issues: [{
+          severity: 'LOW',
+          rule: 'Test',
+          message: '<img src=x onerror=alert(1)>',
+          target: 'safe',
+          remediation: 'none',
+        }],
+      }],
+    }, reportPath);
+    const html = fs.readFileSync(reportPath, 'utf8');
+    assert.ok(html.includes('&lt;script&gt;alert(1)&lt;/script&gt;'));
+    assert.ok(!html.includes('<script>alert(1)</script>'));
+    assert.throws(
+      () => writeTextFileSecure(path.join(tempDir, 'large.txt'), 'x'.repeat(11 * 1024 * 1024)),
+      /safety limit/,
+    );
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
 });

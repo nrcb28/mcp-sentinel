@@ -8,6 +8,9 @@ const SECRET_SIGNATURES = [
   { name: 'Google API / Gemini Key', regex: /AIza[0-9A-Za-z-_]{35}/, severity: 'CRITICAL' },
   { name: 'Stripe API Key', regex: /(sk|rk)_(live|test)_[0-9a-zA-Z]{24,99}/, severity: 'CRITICAL' },
   { name: 'Generic Private Key Header', regex: /-----BEGIN (RSA|EC|DSA|OPENSSH) PRIVATE KEY-----/, severity: 'CRITICAL' },
+  { name: 'Bearer Access Token', regex: /\bBearer\s+[A-Za-z0-9._~+/=-]{20,}/i, severity: 'CRITICAL' },
+  { name: 'JSON Web Token', regex: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/, severity: 'CRITICAL' },
+  { name: 'Inline Credential Assignment', regex: /\b(?:password|passwd|secret|token|api[_-]?key)\s*[=:]\s*[^\s,;&]+/i, severity: 'HIGH' },
 ];
 
 export function analyzeSecretsLeakRisk(serverName, serverConfig) {

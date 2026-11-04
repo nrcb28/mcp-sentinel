@@ -4,6 +4,34 @@ import os from 'node:os';
 
 const MAX_CONFIG_BYTES = 1024 * 1024;
 
+function getWslHostUsers() {
+  const usersRoot = '/mnt/c/Users';
+  if (!fs.existsSync(usersRoot)) return [];
+
+  // Reading every Windows user's MCP configuration crosses a local account
+  // boundary. Scan one explicitly identified user by default; administrators
+  // can opt in to the previous all-users behavior for a dedicated audit.
+  if (process.env.MCP_SENTINEL_SCAN_ALL_USERS === '1') {
+    try {
+      return fs.readdirSync(usersRoot)
+        .filter((user) => user !== 'Public' && user !== 'Default' && !user.startsWith('.'));
+    } catch (_) {
+      return [];
+    }
+  }
+
+  const profile = process.env.USERPROFILE || '';
+  const profileMatch = profile.match(/^\/mnt\/c\/Users\/([^/\\]+)$/i);
+  const candidate = profileMatch?.[1] || process.env.WSL_WINDOWS_USER || process.env.USERNAME || process.env.USER;
+  if (!candidate || candidate === 'Public' || candidate === 'Default' || candidate.startsWith('.')) return [];
+
+  try {
+    return fs.statSync(path.join(usersRoot, candidate)).isDirectory() ? [candidate] : [];
+  } catch (_) {
+    return [];
+  }
+}
+
 /**
  * Returns common default configuration paths for popular MCP clients across OS environments
  * (Windows, macOS, Linux, and WSL).
@@ -50,15 +78,9 @@ export function getStandardConfigPaths() {
     addPath('Zed Editor', path.join(configHome, 'zed', 'settings.json'));
 
     // WSL2 cross-environment support: detect Windows host configurations if accessible via /mnt/c
-    if (fs.existsSync('/mnt/c/Users')) {
-      try {
-        const winUsers = fs.readdirSync('/mnt/c/Users');
-        for (const u of winUsers) {
-          if (u === 'Public' || u === 'Default' || u.startsWith('.')) continue;
-          addPath('Claude Desktop (WSL Host)', `/mnt/c/Users/${u}/AppData/Roaming/Claude/claude_desktop_config.json`);
-          addPath('Cursor (WSL Host)', `/mnt/c/Users/${u}/AppData/Roaming/Cursor/User/globalStorage/rooveterinaryinc.cursor-mcp/mcp.json`);
-        }
-      } catch (_) {}
+    for (const u of getWslHostUsers()) {
+      addPath('Claude Desktop (WSL Host)', `/mnt/c/Users/${u}/AppData/Roaming/Claude/claude_desktop_config.json`);
+      addPath('Cursor (WSL Host)', `/mnt/c/Users/${u}/AppData/Roaming/Cursor/User/globalStorage/rooveterinaryinc.cursor-mcp/mcp.json`);
     }
   }
 
@@ -83,6 +105,7 @@ export function discoverConfigs(customPaths = []) {
 
   if (customPaths && customPaths.length > 0) {
     for (const p of customPaths) {
+      if (typeof p !== 'string' || !p.trim()) continue;
       targets.push({
         client: 'Custom Config',
         path: path.resolve(p),
@@ -97,8 +120,9 @@ export function discoverConfigs(customPaths = []) {
 
   for (const item of targets) {
     const normalized = path.normalize(item.path);
-    if (visitedPaths.has(normalized)) continue;
-    visitedPaths.add(normalized);
+    const dedupeKey = process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+    if (visitedPaths.has(dedupeKey)) continue;
+    visitedPaths.add(dedupeKey);
 
     if (fs.existsSync(normalized)) {
       try {
@@ -142,11 +166,18 @@ export function discoverConfigs(customPaths = []) {
           servers = parsed;
         }
 
-        if (servers && typeof servers === 'object') {
+        if (servers && typeof servers === 'object' && !Array.isArray(servers)) {
           results.push({
             client: item.client,
             path: normalized,
             servers,
+          });
+        } else {
+          results.push({
+            client: item.client,
+            path: normalized,
+            error: 'MCP server definitions must be a JSON object',
+            servers: {},
           });
         }
       } catch (err) {

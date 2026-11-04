@@ -1,4 +1,4 @@
-import fs from 'node:fs';
+import { writeTextFileSecure } from '../security/safe-write.js';
 
 /**
  * Generates an OASIS SARIF v2.1.0 report for native GitHub Code Scanning integration.
@@ -52,7 +52,7 @@ export function generateSarifReport(auditResult, outputPath) {
           driver: {
             name: 'mcp-sentinel',
             informationUri: 'https://github.com/nrcb28/mcp-sentinel',
-            version: '1.0.0',
+            version: '1.4.0',
             rules: Array.from(rulesMap.values()),
           },
         },
@@ -63,7 +63,7 @@ export function generateSarifReport(auditResult, outputPath) {
 
   const jsonStr = JSON.stringify(sarif, null, 2);
   if (outputPath) {
-    fs.writeFileSync(outputPath, jsonStr, 'utf8');
+    writeTextFileSecure(outputPath, jsonStr);
   }
   return jsonStr;
 }
