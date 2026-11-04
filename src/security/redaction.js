@@ -14,6 +14,7 @@ const PRIVATE_KEY_PATTERN = /-----BEGIN (?:RSA|EC|DSA|OPENSSH) PRIVATE KEY-----[
 const URI_PASSWORD_PATTERN = /(\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis):\/\/[^\s/@]+:)[^\s/@]+(@)/gi;
 const INLINE_CREDENTIAL_PATTERN = /(\b(?:password|passwd|secret|token|api[_-]?key)\s*[=:]\s*)[^\s,;&]+/gi;
 const SENSITIVE_KEY_PATTERN = /(?:password|passwd|secret|token|api[_-]?key|private[_-]?key|credential|auth)/i;
+const MAX_REDACTION_DEPTH = 20;
 
 function redactString(value) {
   let redacted = value.replace(PRIVATE_KEY_PATTERN, '[REDACTED_PRIVATE_KEY]');
@@ -29,14 +30,16 @@ function redactString(value) {
  * Returns a copy safe to include in reports or API responses.
  * It intentionally preserves command structure while removing credential values.
  */
-export function redactSensitiveConfig(config) {
+export function redactSensitiveConfig(config, depth = 0) {
+  if (typeof config === 'string') return redactString(config);
   if (!config || typeof config !== 'object') return config;
+  if (depth >= MAX_REDACTION_DEPTH) return '[REDACTED_NESTED_VALUE]';
 
   if (Array.isArray(config)) {
-    return config.map((item) => redactSensitiveConfig(item));
+    return config.map((item) => redactSensitiveConfig(item, depth + 1));
   }
 
-  const result = {};
+  const result = Object.create(null);
   for (const [key, value] of Object.entries(config)) {
     if (typeof value === 'string') {
       if (SENSITIVE_KEY_PATTERN.test(key) && !value.startsWith('${')) {
@@ -45,7 +48,7 @@ export function redactSensitiveConfig(config) {
         result[key] = redactString(value);
       }
     } else if (value && typeof value === 'object') {
-      result[key] = redactSensitiveConfig(value);
+      result[key] = redactSensitiveConfig(value, depth + 1);
     } else {
       result[key] = value;
     }

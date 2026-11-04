@@ -9,6 +9,8 @@ import { analyzeDatabaseSafetyRisk } from './rules/database-safety-rule.js';
 import { analyzePromptInjectionRisk } from './rules/prompt-injection-rule.js';
 import { redactSensitiveConfig, redactIssue } from '../security/redaction.js';
 
+const MAX_SERVERS_PER_AUDIT = 1000;
+
 export function calculateGrade(score) {
   if (score >= 95) return 'A+';
   if (score >= 90) return 'A';
@@ -65,11 +67,23 @@ export function auditServer(serverName, serverConfig, liveTools = []) {
 export function runSecurityAudit(discoveredConfigs, options = {}) {
   const serverResults = [];
   let totalIssuesCount = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
+  const warnings = [];
+  const maxServers = Number.isInteger(options.maxServers) && options.maxServers > 0
+    ? options.maxServers
+    : MAX_SERVERS_PER_AUDIT;
+  const safeConfigs = Array.isArray(discoveredConfigs) ? discoveredConfigs : [];
 
-  for (const item of discoveredConfigs) {
-    if (!item.servers) continue;
+  for (const item of safeConfigs) {
+    if (item?.error) {
+      warnings.push(`[${item.client || 'unknown'}] ${item.error}`);
+    }
+    if (!item || !item.servers || typeof item.servers !== 'object' || Array.isArray(item.servers)) continue;
 
     for (const [name, cfg] of Object.entries(item.servers)) {
+      if (serverResults.length >= maxServers) {
+        warnings.push(`Audit stopped after the ${maxServers} server safety limit`);
+        break;
+      }
       if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) continue;
 
       const serverAudit = auditServer(name, cfg);
@@ -98,11 +112,13 @@ export function runSecurityAudit(discoveredConfigs, options = {}) {
 
   return {
     timestamp: new Date().toISOString(),
-    totalConfigs: discoveredConfigs.length,
+    totalConfigs: safeConfigs.length,
     totalServers,
     overallScore,
     overallGrade,
     summary: totalIssuesCount,
     servers: serverResults,
+    warnings: [...new Set(warnings)],
+    complete: warnings.length === 0,
   };
 }

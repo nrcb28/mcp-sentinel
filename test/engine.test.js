@@ -35,11 +35,21 @@ test('engine: ignores malformed server fields without crashing the audit', () =>
   });
 
   assert.equal(result.score, 100);
-  assert.deepEqual(result.config, {
+  assert.deepEqual(JSON.parse(JSON.stringify(result.config)), {
     command: 42,
     args: { unexpected: true },
     env: 'not-an-object',
   });
+});
+
+test('engine: reports when the server safety limit truncates an audit', () => {
+  const result = runSecurityAudit([
+    { client: 'test', path: 'memory', servers: { first: { command: 'node' }, second: { command: 'node' } } },
+  ], { maxServers: 1 });
+
+  assert.equal(result.totalServers, 1);
+  assert.equal(result.complete, false);
+  assert.match(result.warnings[0], /safety limit/);
 });
 
 test('engine: audits vulnerable server with F grade and critical deductions', () => {

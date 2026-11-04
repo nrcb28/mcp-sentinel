@@ -1,29 +1,102 @@
 import http from 'node:http';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { discoverConfigs } from '../scanner/config-detector.js';
 import { runSecurityAudit } from '../analyzer/engine.js';
 import { generateHardenedConfig } from '../hardening/config-fixer.js';
 
 const MAX_BODY_BYTES = 1024 * 1024;
+const AUTH_COOKIE = 'mcp_sentinel_token';
+const SESSION_MAX_AGE_SECONDS = 3600;
 
 function isObjectRecord(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
-export function createWebServer(port = 4242) {
+function constantTimeEqual(left, right) {
+  if (typeof left !== 'string' || typeof right !== 'string') return false;
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  if (leftBuffer.length !== rightBuffer.length) return false;
+  return timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function getCookie(cookieHeader, name) {
+  if (typeof cookieHeader !== 'string') return null;
+  for (const part of cookieHeader.split(';')) {
+    const separator = part.indexOf('=');
+    if (separator === -1) continue;
+    const key = part.slice(0, separator).trim();
+    if (key !== name) continue;
+    try {
+      return decodeURIComponent(part.slice(separator + 1).trim());
+    } catch (_) {
+      return null;
+    }
+  }
+  return null;
+}
+
+function originIsLocal(origin, port) {
+  if (!origin) return true;
+  try {
+    const parsed = new URL(origin);
+    return (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+      (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost' || parsed.hostname === '::1') &&
+      parsed.port === String(port);
+  } catch (_) {
+    return false;
+  }
+}
+
+export function createWebServer(port = 4242, options = {}) {
+  const authToken = typeof options.authToken === 'string' && options.authToken.length >= 32
+    ? options.authToken
+    : randomBytes(32).toString('hex');
+  const requireAuth = options.requireAuth !== false;
+
   const server = http.createServer((req, res) => {
-    const url = new URL(req.url, `http://localhost:${port}`);
+    let url;
+    try {
+      url = new URL(req.url, `http://localhost:${port}`);
+    } catch {
+      res.writeHead(400);
+      res.end('Invalid URL');
+      return;
+    }
 
     // Helper for JSON responses
-    const json = (data, status = 200) => {
+    const json = (data, status = 200, extraHeaders = {}) => {
       res.writeHead(status, {
         'Content-Type': 'application/json; charset=utf-8',
         'Cache-Control': 'no-store',
         'X-Content-Type-Options': 'nosniff',
         'X-Frame-Options': 'DENY',
         'Referrer-Policy': 'no-referrer',
+        ...extraHeaders,
       });
       res.end(JSON.stringify(data));
     };
+
+    const actualPort = server.address()?.port || port;
+    const allowedHosts = [`localhost:${actualPort}`, `127.0.0.1:${actualPort}`, `[::1]:${actualPort}`];
+    if (!allowedHosts.includes(req.headers.host) ||
+        (req.headers.origin && req.headers.origin !== `http://${req.headers.host}`) ||
+        req.headers['sec-fetch-site'] === 'cross-site') {
+      return json({ error: 'Untrusted request origin or host' }, 401);
+    }
+
+    if (url.pathname.startsWith('/api/') && requireAuth) {
+      const bearer = typeof req.headers.authorization === 'string' && req.headers.authorization.startsWith('Bearer ')
+        ? req.headers.authorization.slice('Bearer '.length)
+        : null;
+      const cookieToken = getCookie(req.headers.cookie, AUTH_COOKIE);
+      const authenticated = constantTimeEqual(bearer, authToken) || constantTimeEqual(cookieToken, authToken);
+      if (!authenticated || !originIsLocal(req.headers.origin, actualPort)) {
+        return json({ error: 'Authentication required' }, 401, {
+          'WWW-Authenticate': 'Bearer',
+        });
+      }
+    }
 
     // Helper to read JSON request body with a hard upper bound to prevent
     // unauthenticated local callers from exhausting memory.
@@ -97,10 +170,13 @@ export function createWebServer(port = 4242) {
       res.writeHead(200, {
         'Content-Type': 'text/html; charset=utf-8',
         'Cache-Control': 'no-store',
-        'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
+        'Content-Security-Policy': "default-src 'none'; connect-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
         'X-Content-Type-Options': 'nosniff',
         'X-Frame-Options': 'DENY',
         'Referrer-Policy': 'no-referrer',
+        ...(requireAuth ? {
+          'Set-Cookie': `${AUTH_COOKIE}=${encodeURIComponent(authToken)}; Max-Age=${SESSION_MAX_AGE_SECONDS}; Path=/; HttpOnly; SameSite=Strict`,
+        } : {}),
       });
       res.end(getSpaHtml(port));
       return;
@@ -118,6 +194,8 @@ export function createWebServer(port = 4242) {
   server.requestTimeout = 15_000;
   server.headersTimeout = 10_000;
   server.keepAliveTimeout = 5_000;
+  server.authToken = authToken;
+  server.requireAuth = requireAuth;
 
   return server;
 }
@@ -244,18 +322,24 @@ function getSpaHtml(port) {
     }
 
     function renderDashboard(data) {
-      document.getElementById('stat-score').innerText = data.overallGrade + ' (' + data.overallScore + '/100)';
+      document.getElementById('stat-score').innerText = (data.complete === false ? 'INCOMPLETE ' : '') + data.overallGrade + ' (' + data.overallScore + '/100)';
       document.getElementById('stat-servers').innerText = data.totalServers;
       document.getElementById('stat-critical').innerText = data.summary.CRITICAL;
       document.getElementById('stat-high').innerText = data.summary.HIGH + data.summary.MEDIUM;
 
       const list = document.getElementById('servers-list');
+      const warnings = Array.isArray(data.warnings) && data.warnings.length > 0
+        ? '<div class="card" style="border-left: 4px solid var(--high); color: var(--high); margin-bottom: 1rem;">' +
+          '<strong>⚠ Audit incomplete or limited</strong>' +
+          data.warnings.map(w => '<div style="margin-top: 0.4rem;">' + escapeHtml(w) + '</div>').join('') +
+          '</div>'
+        : '';
       if (data.servers.length === 0) {
-        list.innerHTML = '<div class="card" style="color: var(--muted);">No MCP servers discovered in default paths. Try the Live Config Playground!</div>';
+        list.innerHTML = warnings + '<div class="card" style="color: var(--muted);">No MCP servers discovered in default paths. Try the Live Config Playground!</div>';
         return;
       }
 
-      list.innerHTML = data.servers.map(s => \`
+      list.innerHTML = warnings + data.servers.map(s => \`
         <div class="server-card">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.8rem;">
             <div>

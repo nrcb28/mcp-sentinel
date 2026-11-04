@@ -250,7 +250,7 @@ export function probeMcpServer(
       params: {
         protocolVersion: '2024-11-05',
         capabilities: {},
-        clientInfo: { name: 'mcp-sentinel', version: '1.4.0' },
+        clientInfo: { name: 'mcp-sentinel', version: '1.5.0' },
       },
     });
   });

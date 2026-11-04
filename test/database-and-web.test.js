@@ -1,4 +1,5 @@
 import test from 'node:test';
+import http from 'node:http';
 import assert from 'node:assert/strict';
 import { analyzeDatabaseSafetyRisk } from '../src/analyzer/rules/database-safety-rule.js';
 import { analyzePromptInjectionRisk } from '../src/analyzer/rules/prompt-injection-rule.js';
@@ -45,8 +46,17 @@ test('web-server: responds to API endpoints correctly', async () => {
   await new Promise((resolve) => server.listen(testPort, resolve));
 
   try {
+    const unauthorizedRes = await fetch(`http://localhost:${testPort}/api/scan`);
+    assert.equal(unauthorizedRes.status, 401);
+
+    const rootRes = await fetch(`http://localhost:${testPort}/`);
+    assert.equal(rootRes.status, 200);
+    assert.match(rootRes.headers.get('set-cookie') || '', /HttpOnly/);
+    assert.match(rootRes.headers.get('content-security-policy') || '', /connect-src 'self'/);
+    const authHeaders = { Cookie: `mcp_sentinel_token=${server.authToken}` };
+
     // Test GET /api/scan
-    const scanRes = await fetch(`http://localhost:${testPort}/api/scan`);
+    const scanRes = await fetch(`http://localhost:${testPort}/api/scan`, { headers: authHeaders });
     assert.equal(scanRes.status, 200);
     assert.equal(scanRes.headers.get('x-content-type-options'), 'nosniff');
     assert.equal(scanRes.headers.get('cache-control'), 'no-store');
@@ -56,7 +66,7 @@ test('web-server: responds to API endpoints correctly', async () => {
     // Test POST /api/audit
     const auditRes = await fetch(`http://localhost:${testPort}/api/audit`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...authHeaders, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         mcpServers: {
           test: {
@@ -73,7 +83,7 @@ test('web-server: responds to API endpoints correctly', async () => {
     // Test POST /api/harden
     const hardenRes = await fetch(`http://localhost:${testPort}/api/harden`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...authHeaders, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         mcpServers: {
           vulnerable: {
@@ -90,7 +100,7 @@ test('web-server: responds to API endpoints correctly', async () => {
     // Audit responses must not echo plaintext credentials back to API clients.
     const secretAuditRes = await fetch(`http://localhost:${testPort}/api/audit`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...authHeaders, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         mcpServers: { secret: { command: 'node', env: { API_KEY: 'sk-proj-123456789012345678901234567890' } } },
       }),
@@ -100,10 +110,25 @@ test('web-server: responds to API endpoints correctly', async () => {
 
     const oversizedRes = await fetch(`http://localhost:${testPort}/api/audit`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...authHeaders, 'Content-Type': 'application/json' },
       body: JSON.stringify({ oversized: 'x'.repeat(1024 * 1024) }),
     });
     assert.equal(oversizedRes.status, 400);
+
+    const crossOriginRes = await fetch(`http://localhost:${testPort}/api/scan`, {
+      headers: { ...authHeaders, Origin: 'http://evil.example' },
+    });
+    assert.equal(crossOriginRes.status, 401);
+    const rebound = await new Promise((resolve, reject) => {
+      http.get(`http://localhost:${testPort}/`, {
+        headers: { Host: 'attacker.example' },
+      }, response => {
+        response.resume();
+        response.on('end', () => resolve(response));
+      }).on('error', reject);
+    });
+    assert.equal(rebound.statusCode, 401);
+    assert.equal(rebound.headers['set-cookie'], undefined);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
