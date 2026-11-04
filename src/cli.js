@@ -1,5 +1,5 @@
 import { discoverConfigs } from './scanner/config-detector.js';
-import { runSecurityAudit } from './analyzer/engine.js';
+import { runSecurityAudit, auditServer } from './analyzer/engine.js';
 import { printTerminalReport } from './reporter/terminal-reporter.js';
 import { generateHtmlReport } from './reporter/html-reporter.js';
 import { outputJsonReport } from './reporter/json-reporter.js';
@@ -8,7 +8,7 @@ import { probeMcpServer } from './scanner/mcp-client.js';
 import { saveHardenedConfigFile } from './hardening/config-fixer.js';
 import { createWebServer } from './server/web-server.js';
 
-const VERSION = '1.3.0';
+const VERSION = '1.4.0';
 
 export async function runCli(argv = process.argv.slice(2)) {
   const command = argv[0];
@@ -26,7 +26,11 @@ export async function runCli(argv = process.argv.slice(2)) {
   if (command === 'serve' || command === 'ui') {
     let port = 4242;
     for (let i = 1; i < argv.length; i++) {
-      if ((argv[i] === '--port' || argv[i] === '-p') && argv[i + 1]) {
+      if (argv[i] === '--port' || argv[i] === '-p') {
+        if (!argv[i + 1]) {
+          console.error('Error: --port requires a value');
+          return 1;
+        }
         const parsedPort = Number(argv[++i]);
         if (!Number.isInteger(parsedPort) || parsedPort < 1 || parsedPort > 65535) {
           console.error('Error: port must be an integer between 1 and 65535');
@@ -57,16 +61,44 @@ export async function runCli(argv = process.argv.slice(2)) {
     for (let i = 1; i < argv.length; i++) {
       const arg = argv[i];
       if (arg === '--config' || arg === '-c') {
-        if (argv[i + 1]) customConfigs.push(argv[++i]);
+        if (!argv[i + 1]) {
+          console.error('Error: --config requires a file path');
+          return 1;
+        }
+        customConfigs.push(argv[++i]);
       } else if (arg === '--html') {
-        if (argv[i + 1]) htmlPath = argv[++i];
+        if (!argv[i + 1]) {
+          console.error('Error: --html requires an output path');
+          return 1;
+        }
+        htmlPath = argv[++i];
       } else if (arg === '--json') {
-        if (argv[i + 1]) jsonPath = argv[++i];
+        if (!argv[i + 1]) {
+          console.error('Error: --json requires an output path');
+          return 1;
+        }
+        jsonPath = argv[++i];
       } else if (arg === '--sarif') {
-        if (argv[i + 1]) sarifPath = argv[++i];
+        if (!argv[i + 1]) {
+          console.error('Error: --sarif requires an output path');
+          return 1;
+        }
+        sarifPath = argv[++i];
       } else if (arg === '--fail-on') {
-        if (argv[i + 1]) failOn = argv[++i].toUpperCase();
+        if (!argv[i + 1]) {
+          console.error('Error: --fail-on requires LOW, MEDIUM, HIGH, or CRITICAL');
+          return 1;
+        }
+        failOn = argv[++i].toUpperCase();
+      } else if (arg.startsWith('-')) {
+        console.error(`Error: unknown scan option "${arg}"`);
+        return 1;
       }
+    }
+
+    if (failOn && !['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'].includes(failOn)) {
+      console.error(`Error: invalid --fail-on level "${failOn}"`);
+      return 1;
     }
 
     const configs = discoverConfigs(customConfigs);
@@ -120,9 +152,20 @@ export async function runCli(argv = process.argv.slice(2)) {
     for (let i = 1; i < argv.length; i++) {
       const arg = argv[i];
       if (arg === '--config' || arg === '-c') {
-        if (argv[i + 1]) configPath = argv[++i];
+        if (!argv[i + 1]) {
+          console.error('Error: --config requires a file path');
+          return 1;
+        }
+        configPath = argv[++i];
       } else if (arg === '--output' || arg === '-o') {
-        if (argv[i + 1]) outputPath = argv[++i];
+        if (!argv[i + 1]) {
+          console.error('Error: --output requires a file path');
+          return 1;
+        }
+        outputPath = argv[++i];
+      } else if (arg.startsWith('-')) {
+        console.error(`Error: unknown fix option "${arg}"`);
+        return 1;
       }
     }
 
@@ -163,6 +206,21 @@ export async function runCli(argv = process.argv.slice(2)) {
       for (const t of probeRes.tools) {
         console.log(`  - ${t.name}: ${t.description || '(no description)'}`);
       }
+
+      const liveAudit = auditServer(targetCommand, {
+        command: targetCommand,
+        args: targetArgs,
+      }, probeRes.tools);
+      if (liveAudit.issues.length > 0) {
+        console.log('\n⚠️ Live security findings:');
+        for (const issue of liveAudit.issues) {
+          console.log(`  [${issue.severity}] ${issue.rule}: ${issue.message}`);
+          console.log(`    ↳ Fix: ${issue.remediation}`);
+        }
+        console.log(`  Live capability score: ${liveAudit.score}/100 (Grade ${liveAudit.grade})`);
+      } else {
+        console.log('\n✅ No live tool security findings detected.');
+      }
       return 0;
     } else {
       console.error(`❌ Probe failed: ${probeRes.error}`);
@@ -182,7 +240,7 @@ USAGE:
   mcp-sentinel scan [options]           Audit installed or specified MCP server configs
   mcp-sentinel fix --config <file>      Auto-harden a vulnerable config file and mask secrets
   mcp-sentinel serve [--port <port>]    Launch interactive local web studio dashboard
-  mcp-sentinel probe <cmd> [args]       Connect to a live MCP server via stdio and inspect capabilities
+  mcp-sentinel probe <cmd> [args]       Connect to a live MCP server via stdio and inspect/audit capabilities
   mcp-sentinel --version                Display version information
   mcp-sentinel --help                   Display this help guide
 

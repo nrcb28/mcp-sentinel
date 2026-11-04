@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { writeTextFileSecure } from '../security/safe-write.js';
 
 const SECRET_VALUE_PATTERNS = [
   /sk-(?:ant-)?[a-zA-Z0-9_-]{20,}/,
@@ -10,6 +11,10 @@ const SECRET_VALUE_PATTERNS = [
   /AIza[0-9A-Za-z_-]{35}/,
   /(?:sk|rk)_(?:live|test)_[0-9a-zA-Z]{24,99}/,
   /-----BEGIN (?:RSA|EC|DSA|OPENSSH) PRIVATE KEY-----/,
+  /\bBearer\s+[A-Za-z0-9._~+/=-]{20,}/i,
+  /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/,
+  /\b(?:password|passwd|secret|token|api[_-]?key)\s*[=:]\s*[^\s,;&]+/i,
+  /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis):\/\/[^\s/@]+:[^\s/@]+@/i,
 ];
 
 const SENSITIVE_ENV_KEY = /(?:password|passwd|secret|token|api[_-]?key|private[_-]?key|credential|auth)/i;
@@ -100,16 +105,9 @@ export function saveHardenedConfigFile(sourcePath, outputPath) {
   if (source === output) {
     throw new Error('Refusing to overwrite the source configuration; choose a different output path');
   }
-  if (fs.existsSync(output) && fs.lstatSync(output).isSymbolicLink()) {
-    throw new Error('Refusing to write through a symbolic-link output path');
-  }
-
   const raw = fs.readFileSync(source, 'utf8');
   const parsed = JSON.parse(raw);
   const { hardenedConfig, changes } = generateHardenedConfig(parsed);
-  fs.writeFileSync(output, JSON.stringify(hardenedConfig, null, 2), { encoding: 'utf8', mode: 0o600 });
-  if (process.platform !== 'win32') {
-    fs.chmodSync(output, 0o600);
-  }
+  writeTextFileSecure(output, JSON.stringify(hardenedConfig, null, 2));
   return changes;
 }
