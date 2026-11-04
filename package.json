@@ -1,6 +1,6 @@
 {
   "name": "mcp-sentinel",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "The Open-Source Security & Permissions Auditor for Model Context Protocol (MCP) Servers",
   "type": "module",
   "main": "./src/index.js",
@@ -8,7 +8,7 @@
     "mcp-sentinel": "./bin/mcp-sentinel.js"
   },
   "scripts": {
-    "test": "node --test test/**/*.test.js",
+    "test": "node --test test/runner.test.js",
     "scan": "node ./bin/mcp-sentinel.js scan",
     "report": "node ./bin/mcp-sentinel.js scan --html report.html"
   },

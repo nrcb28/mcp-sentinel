@@ -1,5 +1,3 @@
-import path from 'node:path';
-
 const SENSITIVE_PATTERNS = [
   { pattern: /[\\/]\.ssh([\\/]|$)/i, desc: 'SSH credentials and private keys', severity: 'CRITICAL' },
   { pattern: /[\\/]\.aws([\\/]|$)/i, desc: 'AWS credentials and configs', severity: 'CRITICAL' },
@@ -15,8 +13,10 @@ const SENSITIVE_PATTERNS = [
 
 export function analyzeFilesystemRisk(serverName, serverConfig) {
   const issues = [];
-  const args = serverConfig.args || [];
-  const env = serverConfig.env || {};
+  const args = Array.isArray(serverConfig.args) ? serverConfig.args : [];
+  const env = serverConfig.env && typeof serverConfig.env === 'object' && !Array.isArray(serverConfig.env)
+    ? serverConfig.env
+    : {};
 
   const allStrings = [
     ...args.filter((a) => typeof a === 'string'),

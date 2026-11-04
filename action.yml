@@ -33,18 +33,24 @@ runs:
 
     - name: Run MCP-Sentinel
       shell: bash
+      env:
+        MCP_SENTINEL_CONFIG: ${{ inputs.config }}
+        MCP_SENTINEL_FAIL_ON: ${{ inputs.fail-on }}
+        MCP_SENTINEL_SARIF: ${{ inputs.sarif }}
+        MCP_SENTINEL_HTML: ${{ inputs.html }}
       run: |
-        ARGS="scan"
-        if [ -n "${{ inputs.config }}" ]; then
-          ARGS="$ARGS --config ${{ inputs.config }}"
+        set -euo pipefail
+        ARGS=(scan)
+        if [ -n "$MCP_SENTINEL_CONFIG" ]; then
+          ARGS+=(--config "$MCP_SENTINEL_CONFIG")
         fi
-        if [ -n "${{ inputs.fail-on }}" ]; then
-          ARGS="$ARGS --fail-on ${{ inputs.fail-on }}"
+        if [ -n "$MCP_SENTINEL_FAIL_ON" ]; then
+          ARGS+=(--fail-on "$MCP_SENTINEL_FAIL_ON")
         fi
-        if [ -n "${{ inputs.sarif }}" ]; then
-          ARGS="$ARGS --sarif ${{ inputs.sarif }}"
+        if [ -n "$MCP_SENTINEL_SARIF" ]; then
+          ARGS+=(--sarif "$MCP_SENTINEL_SARIF")
         fi
-        if [ -n "${{ inputs.html }}" ]; then
-          ARGS="$ARGS --html ${{ inputs.html }}"
+        if [ -n "$MCP_SENTINEL_HTML" ]; then
+          ARGS+=(--html "$MCP_SENTINEL_HTML")
         fi
-        node "${{ github.action_path }}/bin/mcp-sentinel.js" $ARGS
+        node "${{ github.action_path }}/bin/mcp-sentinel.js" "${ARGS[@]}"

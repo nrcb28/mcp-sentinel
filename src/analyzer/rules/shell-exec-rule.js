@@ -23,8 +23,9 @@ const EVAL_FLAGS = [
 
 export function analyzeShellExecRisk(serverName, serverConfig) {
   const issues = [];
-  const command = (serverConfig.command || '').trim().toLowerCase();
-  const args = (serverConfig.args || []).map((a) => (typeof a === 'string' ? a.trim() : ''));
+  const command = (typeof serverConfig.command === 'string' ? serverConfig.command : '').trim().toLowerCase();
+  const args = (Array.isArray(serverConfig.args) ? serverConfig.args : [])
+    .map((a) => (typeof a === 'string' ? a.trim() : ''));
 
   // Check if command is a raw shell
   const baseCommand = command.split(/[\\/]/).pop();

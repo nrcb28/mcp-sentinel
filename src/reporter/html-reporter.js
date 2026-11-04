@@ -1,5 +1,11 @@
 import fs from 'node:fs';
 
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[char]));
+}
+
 export function generateHtmlReport(auditResult, outputPath) {
   const getBadgeClass = (severity) => {
     switch (severity) {
@@ -11,6 +17,7 @@ export function generateHtmlReport(auditResult, outputPath) {
   };
 
   const getGradeClass = (grade) => {
+    if (typeof grade !== 'string') return 'grade-f';
     if (grade.startsWith('A')) return 'grade-a';
     if (grade === 'B') return 'grade-b';
     if (grade === 'C') return 'grade-c';
@@ -127,11 +134,11 @@ export function generateHtmlReport(auditResult, outputPath) {
     <header>
       <div>
         <h1>🛡️ MCP-Sentinel Audit</h1>
-        <div class="subtitle">Generated on ${new Date(auditResult.timestamp).toLocaleString()}</div>
+        <div class="subtitle">Generated on ${escapeHtml(new Date(auditResult.timestamp).toLocaleString())}</div>
       </div>
       <div style="text-align: right;">
         <span class="stat-label">Global Health</span>
-        <div class="stat-val ${getGradeClass(auditResult.overallGrade)}">${auditResult.overallGrade} (${auditResult.overallScore}/100)</div>
+        <div class="stat-val ${getGradeClass(auditResult.overallGrade)}">${escapeHtml(auditResult.overallGrade)} (${escapeHtml(auditResult.overallScore)}/100)</div>
       </div>
     </header>
 
@@ -160,26 +167,26 @@ export function generateHtmlReport(auditResult, outputPath) {
       <div class="server-card">
         <div class="server-header">
           <div>
-            <div class="server-title">${srv.server} <span style="font-size: 0.8rem; color: #8b949e; font-weight: normal;">(${srv.sourceClient})</span></div>
-            <div style="font-size: 0.8rem; color: #8b949e; margin-top: 0.2rem;">${srv.sourcePath}</div>
+            <div class="server-title">${escapeHtml(srv.server)} <span style="font-size: 0.8rem; color: #8b949e; font-weight: normal;">(${escapeHtml(srv.sourceClient)})</span></div>
+            <div style="font-size: 0.8rem; color: #8b949e; margin-top: 0.2rem;">${escapeHtml(srv.sourcePath)}</div>
           </div>
           <div style="text-align: right;">
-            <div class="stat-val ${getGradeClass(srv.grade)}" style="font-size: 1.5rem;">Grade ${srv.grade}</div>
-            <div style="font-size: 0.8rem; color: #8b949e;">Score: ${srv.score}/100</div>
+            <div class="stat-val ${getGradeClass(srv.grade)}" style="font-size: 1.5rem;">Grade ${escapeHtml(srv.grade)}</div>
+            <div style="font-size: 0.8rem; color: #8b949e;">Score: ${escapeHtml(srv.score)}/100</div>
           </div>
         </div>
 
         ${srv.issues.length === 0 ? `
           <div class="clean-alert">✔ Perfect Score! No security vulnerabilities identified.</div>
         ` : srv.issues.map((issue) => `
-          <div class="issue-item ${issue.severity}">
+          <div class="issue-item ${['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].includes(issue.severity) ? issue.severity : 'LOW'}">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem;">
-              <span class="badge ${getBadgeClass(issue.severity)}">${issue.severity}</span>
-              <span style="font-size: 0.8rem; color: #8b949e;">${issue.rule}</span>
+              <span class="badge ${getBadgeClass(issue.severity)}">${escapeHtml(issue.severity)}</span>
+              <span style="font-size: 0.8rem; color: #8b949e;">${escapeHtml(issue.rule)}</span>
             </div>
-            <div class="issue-msg">${issue.message}</div>
-            <div class="issue-details">Target: ${issue.target}</div>
-            <div class="issue-fix">💡 Fix: ${issue.remediation}</div>
+            <div class="issue-msg">${escapeHtml(issue.message)}</div>
+            <div class="issue-details">Target: ${escapeHtml(issue.target)}</div>
+            <div class="issue-fix">💡 Fix: ${escapeHtml(issue.remediation)}</div>
           </div>
         `).join('')}
       </div>

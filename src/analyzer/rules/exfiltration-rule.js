@@ -24,8 +24,9 @@ export function analyzeExfiltrationRisk(serverName, serverConfig, liveTools = []
   const issues = [];
 
   // Check if tools were provided or discovered
-  const toolNames = liveTools.map((t) => (t.name || '').toLowerCase());
-  const toolDescriptions = liveTools.map((t) => (t.description || '').toLowerCase());
+  const safeTools = Array.isArray(liveTools) ? liveTools.filter((tool) => tool && typeof tool === 'object') : [];
+  const toolNames = safeTools.map((t) => (typeof t.name === 'string' ? t.name : '').toLowerCase());
+  const toolDescriptions = safeTools.map((t) => (typeof t.description === 'string' ? t.description : '').toLowerCase());
 
   const hasLocalRead = toolNames.some((name) => READ_INDICATORS.some((ind) => name.includes(ind))) ||
     toolDescriptions.some((desc) => desc.includes('read local file') || desc.includes('filesystem'));

@@ -48,6 +48,8 @@ test('web-server: responds to API endpoints correctly', async () => {
     // Test GET /api/scan
     const scanRes = await fetch(`http://localhost:${testPort}/api/scan`);
     assert.equal(scanRes.status, 200);
+    assert.equal(scanRes.headers.get('x-content-type-options'), 'nosniff');
+    assert.equal(scanRes.headers.get('cache-control'), 'no-store');
     const scanData = await scanRes.json();
     assert.ok(typeof scanData.overallScore === 'number');
 
@@ -84,6 +86,24 @@ test('web-server: responds to API endpoints correctly', async () => {
     assert.equal(hardenRes.status, 200);
     const hardenData = await hardenRes.json();
     assert.equal(hardenData.hardenedConfig.mcpServers.vulnerable.env.API_KEY, '${env:API_KEY}');
+
+    // Audit responses must not echo plaintext credentials back to API clients.
+    const secretAuditRes = await fetch(`http://localhost:${testPort}/api/audit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mcpServers: { secret: { command: 'node', env: { API_KEY: 'sk-proj-123456789012345678901234567890' } } },
+      }),
+    });
+    const secretAuditData = await secretAuditRes.json();
+    assert.equal(secretAuditData.servers[0].config.env.API_KEY, '[REDACTED]');
+
+    const oversizedRes = await fetch(`http://localhost:${testPort}/api/audit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ oversized: 'x'.repeat(1024 * 1024) }),
+    });
+    assert.equal(oversizedRes.status, 400);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

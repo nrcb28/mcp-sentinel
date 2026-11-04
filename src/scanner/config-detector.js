@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
+const MAX_CONFIG_BYTES = 1024 * 1024;
+
 /**
  * Returns common default configuration paths for popular MCP clients across OS environments
  * (Windows, macOS, Linux, and WSL).
@@ -100,8 +102,37 @@ export function discoverConfigs(customPaths = []) {
 
     if (fs.existsSync(normalized)) {
       try {
+        const stat = fs.statSync(normalized);
+        if (!stat.isFile()) {
+          results.push({
+            client: item.client,
+            path: normalized,
+            error: 'Configuration path is not a regular file',
+            servers: {},
+          });
+          continue;
+        }
+        if (stat.size > MAX_CONFIG_BYTES) {
+          results.push({
+            client: item.client,
+            path: normalized,
+            error: `Configuration exceeds the ${MAX_CONFIG_BYTES} byte safety limit`,
+            servers: {},
+          });
+          continue;
+        }
+
         const raw = fs.readFileSync(normalized, 'utf8');
         const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          results.push({
+            client: item.client,
+            path: normalized,
+            error: 'Configuration root must be a JSON object',
+            servers: {},
+          });
+          continue;
+        }
         // Handle common formats: { mcpServers: { ... } }, { servers: { ... } }, { experimental: { mcp: { ... } } }
         let servers = parsed.mcpServers || parsed.servers;
         if (!servers && parsed.experimental?.mcp?.servers) {

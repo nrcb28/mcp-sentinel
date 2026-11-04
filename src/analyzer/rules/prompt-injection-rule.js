@@ -5,11 +5,12 @@
 export function analyzePromptInjectionRisk(serverName, serverConfig, liveTools = []) {
   const issues = [];
 
-  for (const tool of liveTools) {
-    const name = (tool.name || '').toLowerCase();
-    const desc = (tool.description || '').toLowerCase();
-    const schema = tool.inputSchema || {};
-    const props = schema.properties || {};
+  const safeTools = Array.isArray(liveTools) ? liveTools.filter((tool) => tool && typeof tool === 'object') : [];
+  for (const tool of safeTools) {
+    const name = (typeof tool.name === 'string' ? tool.name : '').toLowerCase();
+    const desc = (typeof tool.description === 'string' ? tool.description : '').toLowerCase();
+    const schema = tool.inputSchema && typeof tool.inputSchema === 'object' ? tool.inputSchema : {};
+    const props = schema.properties && typeof schema.properties === 'object' ? schema.properties : {};
 
     // 1. Tool declares dangerous arbitrary code execution
     const dangerousName = /eval|exec|script|shell|command|terminal/i.test(name);

@@ -10,7 +10,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-purple?style=flat-square" alt="License"></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-2024--11--05-orange?style=flat-square" alt="MCP Spec"></a>
   <a href="https://sarifweb.azurewebsites.net/"><img src="https://img.shields.io/badge/SARIF-v2.1.0-blueviolet?style=flat-square" alt="SARIF 2.1.0"></a>
-  <a href="https://github.com/nrcb28/mcp-sentinel"><img src="https://img.shields.io/badge/tests-21%20passed-success?style=flat-square" alt="Tests"></a>
+  <a href="https://github.com/nrcb28/mcp-sentinel"><img src="https://img.shields.io/badge/tests-23%20passed-success?style=flat-square" alt="Tests"></a>
   <a href="https://github.com/nrcb28/mcp-sentinel"><img src="https://img.shields.io/badge/PRs-welcome-green.svg?style=flat-square" alt="PRs Welcome"></a>
 </p>
 
@@ -65,11 +65,11 @@ However, installing third-party MCP servers introduces acute security risks: **a
   - **Secret & API Key Leakage:** Detects unmasked tokens (OpenAI, Anthropic, GitHub, AWS, Stripe, Google) in configs or arguments.
   - **Database Credentials & TLS:** Audits database connection strings for superuser/root roles, plaintext passwords, and disabled SSL (`sslmode=disable`).
   - **Prompt Injection Defense:** Flags unconstrained string parameters (`query`, `sql`, `command`) vulnerable to indirect prompt injection.
-  - **Supply Chain Pinning:** Flags unpinned or `@latest` packages in `npx` / `uvx` and dangerous `curl | bash` patterns.
+  - **Supply Chain Pinning:** Flags unpinned or `@latest` packages in `npx` / `uvx` and dangerous `curl | bash` patterns. The hardener never invents a package version; it leaves the package unchanged and requests a verified exact pin.
   - **Container & Docker Sandbox:** Detects dangerous docker mounts (`/var/run/docker.sock`), `--privileged` mode, and `--network host`.
   - **Network & SSRF Guard:** Identifies cloud metadata target endpoints (`169.254.169.254`), unencrypted HTTP/WS, and disabled TLS verification.
 - 💻 **Interactive Web Studio (`mcp-sentinel serve`):** Launches a local dark-mode dashboard to visually inspect servers, test live configurations, and auto-harden configs with one click.
-- 🛠️ **Auto-Hardener (`mcp-sentinel fix`):** Automatically sanitizes vulnerable configuration files by masking secrets with environment variable references and pinning package versions.
+- 🛠️ **Auto-Hardener (`mcp-sentinel fix`):** Automatically sanitizes vulnerable configuration files by masking secrets with environment variable references and reporting packages that still need a verified exact pin.
 - 📊 **OASIS SARIF v2.1.0:** Natively outputs SARIF for direct integration with **GitHub Advanced Security** and Code Scanning alerts.
 - 🤖 **Native GitHub Action & Pre-commit Hook:** Integrate into your CI/CD pipelines and local git hooks with zero friction.
 - ⚡ **Zero External Dependencies:** Pure modern Node.js standards. Blazing fast (<200ms scan time, <30kB package size).
@@ -114,6 +114,10 @@ mcp-sentinel scan
 mcp-sentinel serve --port 4242
 ```
 
+The Web Studio binds to `127.0.0.1` only and has no authentication. Do not
+reverse-proxy or expose it publicly without adding an authenticated,
+TLS-terminating boundary.
+
 ### 3. Scan a specific project configuration file
 ```bash
 mcp-sentinel scan --config ./claude_desktop_config.json
@@ -143,6 +147,10 @@ mcp-sentinel scan --config ./mcp.json --fail-on HIGH
 ```bash
 mcp-sentinel probe npx -y @modelcontextprotocol/server-filesystem C:/Projects
 ```
+
+Probe children receive a minimal inherited environment by default. The full
+parent environment is never forwarded automatically; pass only required
+variables explicitly through the programmatic API.
 
 ---
 
@@ -188,7 +196,7 @@ Add MCP-Sentinel to your `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/nrcb28/mcp-sentinel
-    rev: v1.2.0
+    rev: v1.3.0
     hooks:
       - id: mcp-sentinel
 ```
@@ -219,7 +227,7 @@ repos:
 
 ## 🧪 Automated Testing
 
-MCP-Sentinel includes a comprehensive automated test suite with 21 unit tests covering 100% of the core security logic across Windows, macOS, and Linux:
+MCP-Sentinel includes a comprehensive automated test suite with 23 unit tests covering the core security logic across Windows, macOS, and Linux:
 
 ```bash
 npm test

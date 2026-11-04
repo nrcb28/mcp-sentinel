@@ -6,8 +6,9 @@
  */
 export function analyzeSupplyChainRisk(serverName, serverConfig) {
   const issues = [];
-  const command = (serverConfig.command || '').trim().toLowerCase();
-  const args = (serverConfig.args || []).map((a) => (typeof a === 'string' ? a.trim() : ''));
+  const command = (typeof serverConfig.command === 'string' ? serverConfig.command : '').trim().toLowerCase();
+  const args = (Array.isArray(serverConfig.args) ? serverConfig.args : [])
+    .map((a) => (typeof a === 'string' ? a.trim() : ''));
 
   const isNpx = command === 'npx' || command.endsWith('/npx') || command.endsWith('\\npx');
   const isUvx = command === 'uvx' || command.endsWith('/uvx') || command.endsWith('\\uvx');
