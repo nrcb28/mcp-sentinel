@@ -45,6 +45,13 @@ export function printTerminalReport(auditResult) {
   console.log(`\n${c.bold}Overall Security Health:${c.reset} ${gradeBadge(auditResult.overallGrade)} (Score: ${auditResult.overallScore}/100)`);
   console.log(`${c.dim}Scanned Servers: ${auditResult.totalServers} | Found Configurations: ${auditResult.totalConfigs}${c.reset}`);
 
+  if (Array.isArray(auditResult.warnings) && auditResult.warnings.length > 0) {
+    console.log(`\n${c.yellow}⚠ Audit warnings:${c.reset}`);
+    for (const warning of auditResult.warnings) {
+      console.log(`  ${c.yellow}${warning}${c.reset}`);
+    }
+  }
+
   const s = auditResult.summary;
   console.log(`\n${c.bold}Vulnerability Summary:${c.reset}`);
   console.log(`  ${c.red}● Critical:${c.reset} ${s.CRITICAL}   ${c.yellow}▲ High:${c.reset} ${s.HIGH}   ${c.blue}ℹ Medium:${c.reset} ${s.MEDIUM}   ${c.dim}Low:${c.reset} ${s.LOW}`);

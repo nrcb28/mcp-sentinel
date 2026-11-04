@@ -8,7 +8,7 @@ import { probeMcpServer } from './scanner/mcp-client.js';
 import { saveHardenedConfigFile } from './hardening/config-fixer.js';
 import { createWebServer } from './server/web-server.js';
 
-const VERSION = '1.4.0';
+const VERSION = '1.5.0';
 
 export async function runCli(argv = process.argv.slice(2)) {
   const command = argv[0];
@@ -119,6 +119,11 @@ export async function runCli(argv = process.argv.slice(2)) {
     if (sarifPath) {
       generateSarifReport(result, sarifPath);
       console.log(`🛡️ SARIF v2.1.0 security report generated: ${sarifPath}`);
+    }
+
+    if (result.complete === false) {
+      console.error('Audit incomplete: resolve the reported warnings before trusting the result.');
+      return 1;
     }
 
     if (failOn) {

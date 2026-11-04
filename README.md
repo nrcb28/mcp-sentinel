@@ -10,7 +10,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-purple?style=flat-square" alt="License"></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-2024--11--05-orange?style=flat-square" alt="MCP Spec"></a>
   <a href="https://sarifweb.azurewebsites.net/"><img src="https://img.shields.io/badge/SARIF-v2.1.0-blueviolet?style=flat-square" alt="SARIF 2.1.0"></a>
-  <a href="https://github.com/nrcb28/mcp-sentinel"><img src="https://img.shields.io/badge/tests-25%20passed-success?style=flat-square" alt="Tests"></a>
+  <a href="https://github.com/nrcb28/mcp-sentinel"><img src="https://img.shields.io/badge/tests-26%20passed-success?style=flat-square" alt="Tests"></a>
   <a href="https://github.com/nrcb28/mcp-sentinel"><img src="https://img.shields.io/badge/PRs-welcome-green.svg?style=flat-square" alt="PRs Welcome"></a>
 </p>
 
@@ -72,6 +72,7 @@ However, installing third-party MCP servers introduces acute security risks: **a
 - 🛠️ **Auto-Hardener (`mcp-sentinel fix`):** Automatically sanitizes vulnerable configuration files by masking secrets with environment variable references and reporting packages that still need a verified exact pin.
 - 🔎 **Live Probe Audit:** `probe` now analyzes discovered MCP tools for exfiltration, arbitrary execution, and prompt-injection surfaces instead of only listing them.
 - 🔐 **Safe Artifacts:** JSON, SARIF, HTML, and hardened configurations reject symlink output targets, enforce size limits, and use private file permissions where supported.
+- 🧱 **Completeness Guards:** Audits cap server complexity and surface warnings instead of silently presenting partial or unreadable scans as clean.
 - 📊 **OASIS SARIF v2.1.0:** Natively outputs SARIF for direct integration with **GitHub Advanced Security** and Code Scanning alerts.
 - 🤖 **Native GitHub Action & Pre-commit Hook:** Integrate into your CI/CD pipelines and local git hooks with zero friction.
 - ⚡ **Zero External Dependencies:** Pure modern Node.js standards. Blazing fast (<200ms scan time, <30kB package size).
@@ -116,9 +117,9 @@ mcp-sentinel scan
 mcp-sentinel serve --port 4242
 ```
 
-The Web Studio binds to `127.0.0.1` only and has no authentication. Do not
-reverse-proxy or expose it publicly without adding an authenticated,
-TLS-terminating boundary.
+The Web Studio binds to `127.0.0.1` only and creates a random, HttpOnly,
+SameSite session cookie on startup. Do not reverse-proxy or expose it publicly
+without adding a separately authenticated, TLS-terminating boundary.
 
 ### 3. Scan a specific project configuration file
 ```bash
@@ -201,7 +202,7 @@ Add MCP-Sentinel to your `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/nrcb28/mcp-sentinel
-    rev: v1.4.0
+    rev: v1.5.0
     hooks:
       - id: mcp-sentinel
 ```
@@ -232,7 +233,7 @@ repos:
 
 ## 🧪 Automated Testing
 
-MCP-Sentinel includes a comprehensive automated test suite with 25 unit tests covering the core security logic across Windows, macOS, and Linux:
+MCP-Sentinel includes a comprehensive automated test suite with 26 unit tests covering the core security logic across Windows, macOS, and Linux:
 
 ```bash
 npm test

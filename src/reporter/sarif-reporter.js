@@ -1,4 +1,30 @@
+import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { writeTextFileSecure } from '../security/safe-write.js';
+
+function artifactUri(sourcePath) {
+  if (typeof sourcePath !== 'string' || !sourcePath) return 'unknown';
+  const normalized = sourcePath.replace(/\\/g, '/');
+  const isWindowsAbsolute = /^[A-Za-z]:\//.test(normalized) || normalized.startsWith('//');
+  const isUnixAbsolute = normalized.startsWith('/');
+
+  if (!isWindowsAbsolute && !isUnixAbsolute && !normalized.includes('..')) {
+    return normalized;
+  }
+
+  const absolute = path.resolve(sourcePath);
+  const workspace = path.resolve(process.cwd());
+  const relative = path.relative(workspace, absolute).replace(/\\/g, '/');
+  if (!isWindowsAbsolute && relative && !relative.startsWith('../') && relative !== '..' && !path.isAbsolute(relative)) {
+    return relative;
+  }
+
+  // Do not publish usernames or home-directory layout in SARIF uploaded to a
+  // CI provider. Keep a stable, non-reversible identifier for external files.
+  const digest = createHash('sha256').update(normalized).digest('hex').slice(0, 16);
+  const basename = path.posix.basename(normalized) || 'config.json';
+  return `external/${digest}/${basename}`;
+}
 
 /**
  * Generates an OASIS SARIF v2.1.0 report for native GitHub Code Scanning integration.
@@ -34,7 +60,7 @@ export function generateSarifReport(auditResult, outputPath) {
           {
             physicalLocation: {
               artifactLocation: {
-                uri: srv.sourcePath.replace(/\\/g, '/'),
+                uri: artifactUri(srv.sourcePath),
               },
             },
           },
@@ -52,7 +78,7 @@ export function generateSarifReport(auditResult, outputPath) {
           driver: {
             name: 'mcp-sentinel',
             informationUri: 'https://github.com/nrcb28/mcp-sentinel',
-            version: '1.4.0',
+            version: '1.5.0',
             rules: Array.from(rulesMap.values()),
           },
         },

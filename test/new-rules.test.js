@@ -112,6 +112,8 @@ test('sarif-reporter: generates valid OASIS SARIF v2.1.0 structure', () => {
   assert.equal(parsed.runs[0].results.length, 1);
   assert.equal(parsed.runs[0].results[0].ruleId, 'FS_SENSITIVE_PATH_EXPOSURE');
   assert.equal(parsed.runs[0].results[0].level, 'error');
+  assert.match(parsed.runs[0].results[0].locations[0].physicalLocation.artifactLocation.uri, /^external\//);
+  assert.ok(!parsed.runs[0].results[0].locations[0].physicalLocation.artifactLocation.uri.includes('C:/test'));
 });
 
 test('reporters: escape untrusted findings and reject oversized generated files', () => {
