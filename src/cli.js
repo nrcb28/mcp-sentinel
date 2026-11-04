@@ -8,6 +8,8 @@ import { probeMcpServer } from './scanner/mcp-client.js';
 import { saveHardenedConfigFile } from './hardening/config-fixer.js';
 import { createWebServer } from './server/web-server.js';
 
+const VERSION = '1.3.0';
+
 export async function runCli(argv = process.argv.slice(2)) {
   const command = argv[0];
 
@@ -17,7 +19,7 @@ export async function runCli(argv = process.argv.slice(2)) {
   }
 
   if (command === '--version' || command === '-v') {
-    console.log('mcp-sentinel v1.2.0');
+    console.log(`mcp-sentinel v${VERSION}`);
     return 0;
   }
 
@@ -25,15 +27,24 @@ export async function runCli(argv = process.argv.slice(2)) {
     let port = 4242;
     for (let i = 1; i < argv.length; i++) {
       if ((argv[i] === '--port' || argv[i] === '-p') && argv[i + 1]) {
-        port = parseInt(argv[++i], 10) || 4242;
+        const parsedPort = Number(argv[++i]);
+        if (!Number.isInteger(parsedPort) || parsedPort < 1 || parsedPort > 65535) {
+          console.error('Error: port must be an integer between 1 and 65535');
+          return 1;
+        }
+        port = parsedPort;
       }
     }
     const server = createWebServer(port);
-    server.listen(port, () => {
-      console.log(`\n🛡️ MCP-Sentinel Studio running at http://localhost:${port}`);
-      console.log('Press Ctrl+C to stop the server.\n');
+    return new Promise((resolve, reject) => {
+      server.once('error', reject);
+      // The Studio exposes local configuration and intentionally has no login;
+      // never bind it to a public interface by default.
+      server.listen({ port, host: '127.0.0.1' }, () => {
+        console.log(`\n🛡️ MCP-Sentinel Studio running at http://127.0.0.1:${port}`);
+        console.log('Press Ctrl+C to stop the server.\n');
+      });
     });
-    return new Promise(() => {}); // keep running
   }
 
   if (command === 'scan') {

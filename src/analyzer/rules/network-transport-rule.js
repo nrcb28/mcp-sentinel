@@ -3,8 +3,10 @@
  */
 export function analyzeNetworkTransportRisk(serverName, serverConfig) {
   const issues = [];
-  const args = serverConfig.args || [];
-  const env = serverConfig.env || {};
+  const args = Array.isArray(serverConfig.args) ? serverConfig.args : [];
+  const env = serverConfig.env && typeof serverConfig.env === 'object' && !Array.isArray(serverConfig.env)
+    ? serverConfig.env
+    : {};
 
   const allStrings = [
     ...args.filter((a) => typeof a === 'string'),

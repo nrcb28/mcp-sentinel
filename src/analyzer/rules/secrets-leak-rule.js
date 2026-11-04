@@ -12,8 +12,10 @@ const SECRET_SIGNATURES = [
 
 export function analyzeSecretsLeakRisk(serverName, serverConfig) {
   const issues = [];
-  const env = serverConfig.env || {};
-  const args = serverConfig.args || [];
+  const env = serverConfig.env && typeof serverConfig.env === 'object' && !Array.isArray(serverConfig.env)
+    ? serverConfig.env
+    : {};
+  const args = Array.isArray(serverConfig.args) ? serverConfig.args : [];
 
   // Check env entries
   for (const [key, val] of Object.entries(env)) {

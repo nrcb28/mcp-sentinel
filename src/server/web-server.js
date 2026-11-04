@@ -1,7 +1,13 @@
 import http from 'node:http';
 import { discoverConfigs } from '../scanner/config-detector.js';
-import { runSecurityAudit, auditServer } from '../analyzer/engine.js';
+import { runSecurityAudit } from '../analyzer/engine.js';
 import { generateHardenedConfig } from '../hardening/config-fixer.js';
+
+const MAX_BODY_BYTES = 1024 * 1024;
+
+function isObjectRecord(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
 
 export function createWebServer(port = 4242) {
   const server = http.createServer((req, res) => {
@@ -9,15 +15,38 @@ export function createWebServer(port = 4242) {
 
     // Helper for JSON responses
     const json = (data, status = 200) => {
-      res.writeHead(status, { 'Content-Type': 'application/json' });
+      res.writeHead(status, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'DENY',
+        'Referrer-Policy': 'no-referrer',
+      });
       res.end(JSON.stringify(data));
     };
 
-    // Helper to read JSON request body
+    // Helper to read JSON request body with a hard upper bound to prevent
+    // unauthenticated local callers from exhausting memory.
     const readBody = (callback) => {
       let body = '';
-      req.on('data', (chunk) => { body += chunk; });
+      let bodyBytes = 0;
+      let completed = false;
+      req.setEncoding('utf8');
+
+      req.on('data', (chunk) => {
+        if (completed) return;
+        bodyBytes += Buffer.byteLength(chunk, 'utf8');
+        if (bodyBytes > MAX_BODY_BYTES) {
+          completed = true;
+          callback(new Error(`Request body exceeds the ${MAX_BODY_BYTES} byte safety limit`));
+          req.resume();
+          return;
+        }
+        body += chunk;
+      });
       req.on('end', () => {
+        if (completed) return;
+        completed = true;
         try {
           const parsed = JSON.parse(body || '{}');
           callback(null, parsed);
@@ -38,7 +67,10 @@ export function createWebServer(port = 4242) {
     if (url.pathname === '/api/audit' && req.method === 'POST') {
       readBody((err, payload) => {
         if (err) return json({ error: 'Invalid JSON body' }, 400);
-        const configs = [{ client: 'Live Editor', path: 'memory', servers: payload.mcpServers || payload.servers || payload }];
+        if (!isObjectRecord(payload)) return json({ error: 'JSON body must be an object' }, 400);
+        const servers = payload.mcpServers || payload.servers || payload;
+        if (!isObjectRecord(servers)) return json({ error: 'MCP server definitions must be an object' }, 400);
+        const configs = [{ client: 'Live Editor', path: 'memory', servers }];
         const audit = runSecurityAudit(configs);
         return json(audit);
       });
@@ -49,22 +81,43 @@ export function createWebServer(port = 4242) {
     if (url.pathname === '/api/harden' && req.method === 'POST') {
       readBody((err, payload) => {
         if (err) return json({ error: 'Invalid JSON body' }, 400);
-        const result = generateHardenedConfig(payload);
-        return json(result);
+        if (!isObjectRecord(payload)) return json({ error: 'JSON body must be an object' }, 400);
+        try {
+          const result = generateHardenedConfig(payload);
+          return json(result);
+        } catch (error) {
+          return json({ error: 'Unable to harden configuration' }, 400);
+        }
       });
       return;
     }
 
     // Front-end SPA
     if (url.pathname === '/' || url.pathname === '/index.html') {
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.writeHead(200, {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store',
+        'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'DENY',
+        'Referrer-Policy': 'no-referrer',
+      });
       res.end(getSpaHtml(port));
       return;
     }
 
-    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.writeHead(404, {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+    });
     res.end('Not Found');
   });
+
+  // Bound idle/header time so a local client cannot hold connections forever.
+  server.requestTimeout = 15_000;
+  server.headersTimeout = 10_000;
+  server.keepAliveTimeout = 5_000;
 
   return server;
 }
@@ -127,8 +180,8 @@ function getSpaHtml(port) {
     </header>
 
     <div class="tabs">
-      <button class="tab active" onclick="switchTab('dashboard')">Environment Dashboard</button>
-      <button class="tab" onclick="switchTab('playground')">Live Config Auditor & Hardener</button>
+      <button class="tab active" onclick="switchTab('dashboard', event)">Environment Dashboard</button>
+      <button class="tab" onclick="switchTab('playground', event)">Live Config Auditor & Hardener</button>
     </div>
 
     <!-- Dashboard Tab -->
@@ -179,6 +232,11 @@ function getSpaHtml(port) {
   </div>
 
   <script>
+    const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[char]));
+    const severityClass = (value) => ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].includes(value) ? value : 'LOW';
+
     async function fetchScan() {
       const res = await fetch('/api/scan');
       const data = await res.json();
@@ -201,23 +259,23 @@ function getSpaHtml(port) {
         <div class="server-card">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.8rem;">
             <div>
-              <strong style="font-size: 1.2rem;">\${s.server}</strong>
-              <span style="color: var(--muted); font-size: 0.85rem; margin-left: 0.5rem;">[\${s.sourceClient}]</span>
+              <strong style="font-size: 1.2rem;">\${escapeHtml(s.server)}</strong>
+              <span style="color: var(--muted); font-size: 0.85rem; margin-left: 0.5rem;">[\${escapeHtml(s.sourceClient)}]</span>
             </div>
             <div>
-              <span class="badge \${s.score >= 90 ? 'badge-safe' : 'badge-crit'}">Grade \${s.grade} (\${s.score}/100)</span>
+                <span class="badge \${s.score >= 90 ? 'badge-safe' : 'badge-crit'}">Grade \${escapeHtml(s.grade)} (\${escapeHtml(s.score)}/100)</span>
             </div>
           </div>
-          <div style="font-size: 0.8rem; color: var(--muted);">\${s.sourcePath}</div>
+          <div style="font-size: 0.8rem; color: var(--muted);">\${escapeHtml(s.sourcePath)}</div>
           \${s.issues.length === 0 ? '<div style="color: var(--safe); margin-top:0.6rem; font-size: 0.9rem;">✔ No security issues detected.</div>' : ''}
           \${s.issues.map(i => \`
-            <div class="issue-box \${i.severity}">
+            <div class="issue-box \${severityClass(i.severity)}">
               <div style="display:flex; justify-content:space-between;">
-                <span class="badge \${i.severity === 'CRITICAL' ? 'badge-crit' : 'badge-high'}">\${i.severity}</span>
-                <span style="font-size: 0.8rem; color: var(--muted);">\${i.rule}</span>
+                <span class="badge \${i.severity === 'CRITICAL' ? 'badge-crit' : 'badge-high'}">\${escapeHtml(i.severity)}</span>
+                <span style="font-size: 0.8rem; color: var(--muted);">\${escapeHtml(i.rule)}</span>
               </div>
-              <div style="margin-top: 0.4rem; font-weight: 500;">\${i.message}</div>
-              <div style="color: var(--safe); font-size: 0.85rem; margin-top: 0.3rem;">💡 \${i.remediation}</div>
+              <div style="margin-top: 0.4rem; font-weight: 500;">\${escapeHtml(i.message)}</div>
+              <div style="color: var(--safe); font-size: 0.85rem; margin-top: 0.3rem;">💡 \${escapeHtml(i.remediation)}</div>
             </div>
           \`).join('')}
         </div>
@@ -236,11 +294,11 @@ function getSpaHtml(port) {
         document.getElementById('live-results').innerHTML = '<h3 style="margin: 1rem 0;">Audit Result</h3>' +
           data.servers.map(s => \`
             <div class="server-card">
-              <h4>\${s.server} - Score: \${s.score}/100 (Grade \${s.grade})</h4>
+              <h4>\${escapeHtml(s.server)} - Score: \${escapeHtml(s.score)}/100 (Grade \${escapeHtml(s.grade)})</h4>
               \${s.issues.map(i => \`
-                <div class="issue-box \${i.severity}">
-                  <strong>[\${i.severity}] \${i.rule}:</strong> \${i.message}
-                  <div style="color: var(--safe); font-size: 0.85rem;">💡 \${i.remediation}</div>
+                <div class="issue-box \${severityClass(i.severity)}">
+                  <strong>[\${escapeHtml(i.severity)}] \${escapeHtml(i.rule)}:</strong> \${escapeHtml(i.message)}
+                  <div style="color: var(--safe); font-size: 0.85rem;">💡 \${escapeHtml(i.remediation)}</div>
                 </div>
               \`).join('')}
             </div>
@@ -267,9 +325,9 @@ function getSpaHtml(port) {
       }
     }
 
-    function switchTab(name) {
+    function switchTab(name, clickEvent) {
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      event.target.classList.add('active');
+      clickEvent?.target?.classList.add('active');
       document.getElementById('tab-dashboard').style.display = name === 'dashboard' ? 'block' : 'none';
       document.getElementById('tab-playground').style.display = name === 'playground' ? 'block' : 'none';
     }

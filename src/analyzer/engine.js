@@ -7,6 +7,7 @@ import { analyzeDockerSandboxRisk } from './rules/docker-sandbox-rule.js';
 import { analyzeNetworkTransportRisk } from './rules/network-transport-rule.js';
 import { analyzeDatabaseSafetyRisk } from './rules/database-safety-rule.js';
 import { analyzePromptInjectionRisk } from './rules/prompt-injection-rule.js';
+import { redactSensitiveConfig, redactIssue } from '../security/redaction.js';
 
 export function calculateGrade(score) {
   if (score >= 95) return 'A+';
@@ -21,16 +22,20 @@ export function calculateGrade(score) {
  * Evaluates a single MCP server configuration across all security domains.
  */
 export function auditServer(serverName, serverConfig, liveTools = []) {
+  const safeConfig = serverConfig && typeof serverConfig === 'object' && !Array.isArray(serverConfig)
+    ? serverConfig
+    : {};
+  const safeTools = Array.isArray(liveTools) ? liveTools : [];
   const issues = [
-    ...analyzeFilesystemRisk(serverName, serverConfig),
-    ...analyzeShellExecRisk(serverName, serverConfig),
-    ...analyzeSecretsLeakRisk(serverName, serverConfig),
-    ...analyzeExfiltrationRisk(serverName, serverConfig, liveTools),
-    ...analyzeSupplyChainRisk(serverName, serverConfig),
-    ...analyzeDockerSandboxRisk(serverName, serverConfig),
-    ...analyzeNetworkTransportRisk(serverName, serverConfig),
-    ...analyzeDatabaseSafetyRisk(serverName, serverConfig),
-    ...analyzePromptInjectionRisk(serverName, serverConfig, liveTools),
+    ...analyzeFilesystemRisk(serverName, safeConfig),
+    ...analyzeShellExecRisk(serverName, safeConfig),
+    ...analyzeSecretsLeakRisk(serverName, safeConfig),
+    ...analyzeExfiltrationRisk(serverName, safeConfig, safeTools),
+    ...analyzeSupplyChainRisk(serverName, safeConfig),
+    ...analyzeDockerSandboxRisk(serverName, safeConfig),
+    ...analyzeNetworkTransportRisk(serverName, safeConfig),
+    ...analyzeDatabaseSafetyRisk(serverName, safeConfig),
+    ...analyzePromptInjectionRisk(serverName, safeConfig, safeTools),
   ];
 
   let deductions = 0;
@@ -46,11 +51,11 @@ export function auditServer(serverName, serverConfig, liveTools = []) {
 
   return {
     server: serverName,
-    config: serverConfig,
+    config: redactSensitiveConfig(safeConfig),
     score,
     grade,
-    issues,
-    liveToolsCount: liveTools.length,
+    issues: issues.map(redactIssue),
+    liveToolsCount: safeTools.length,
   };
 }
 
@@ -65,7 +70,7 @@ export function runSecurityAudit(discoveredConfigs, options = {}) {
     if (!item.servers) continue;
 
     for (const [name, cfg] of Object.entries(item.servers)) {
-      if (!cfg || typeof cfg !== 'object') continue;
+      if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) continue;
 
       const serverAudit = auditServer(name, cfg);
       serverAudit.sourceClient = item.client;

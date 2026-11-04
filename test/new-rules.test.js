@@ -74,7 +74,8 @@ test('config-fixer: auto-hardens secrets, execution bypass, and unpinned package
   const server = hardenedConfig.mcpServers['test-app'];
 
   assert.equal(server.env.OPENAI_API_KEY, '${env:OPENAI_API_KEY}');
-  assert.ok(server.args.includes('unpinned-pkg@1.0.0'));
+  assert.ok(server.args.includes('unpinned-pkg'));
+  assert.ok(changes.some((change) => change.includes('Could not safely pin package')));
   assert.ok(!server.args.includes('-ExecutionPolicy'));
   assert.ok(changes.length >= 3);
 });

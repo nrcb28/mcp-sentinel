@@ -3,8 +3,9 @@
  */
 export function analyzeDockerSandboxRisk(serverName, serverConfig) {
   const issues = [];
-  const command = (serverConfig.command || '').trim().toLowerCase();
-  const args = (serverConfig.args || []).map((a) => (typeof a === 'string' ? a.trim() : ''));
+  const command = (typeof serverConfig.command === 'string' ? serverConfig.command : '').trim().toLowerCase();
+  const args = (Array.isArray(serverConfig.args) ? serverConfig.args : [])
+    .map((a) => (typeof a === 'string' ? a.trim() : ''));
 
   const isContainerTool = command === 'docker' || command.endsWith('/docker') || command.endsWith('\\docker') ||
                           command === 'podman' || command.endsWith('/podman') || command.endsWith('\\podman');

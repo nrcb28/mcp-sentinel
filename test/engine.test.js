@@ -27,6 +27,21 @@ test('engine: audits safe server with 100 score and A+ grade', () => {
   assert.equal(result.issues.length, 0);
 });
 
+test('engine: ignores malformed server fields without crashing the audit', () => {
+  const result = auditServer('malformed', {
+    command: 42,
+    args: { unexpected: true },
+    env: 'not-an-object',
+  });
+
+  assert.equal(result.score, 100);
+  assert.deepEqual(result.config, {
+    command: 42,
+    args: { unexpected: true },
+    env: 'not-an-object',
+  });
+});
+
 test('engine: audits vulnerable server with F grade and critical deductions', () => {
   const vulnConfig = {
     command: 'powershell.exe',
@@ -40,6 +55,7 @@ test('engine: audits vulnerable server with F grade and critical deductions', ()
   assert.ok(result.score < 60);
   assert.equal(result.grade, 'F');
   assert.ok(result.issues.length >= 3);
+  assert.equal(result.config.env.KEY, '[REDACTED_SECRET]');
 });
 
 test('engine: aggregates full audit report across multiple configs', () => {
